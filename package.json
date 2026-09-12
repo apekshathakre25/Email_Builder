@@ -1,0 +1,54 @@
+{
+  "name": "bulk-email-sender",
+  "version": "1.0.0",
+  "description": "A bulk email sender application with file upload, SMTP configuration, and real-time status tracking",
+  "main": "app.js",
+  "scripts": {
+    "start": "dotenvx run -- concurrently \"node app.js\" \"node workprocess/mailer.js\"",
+    "dev": "dotenvx run -- concurrently \"node app.js\" \"node workprocess/mailer.js\"",
+    "app": "dotenvx run -- node app.js",
+    "worker": "dotenvx run -- node workprocess/mailer.js",
+    "test": "echo \"No tests specified - skipping tests\" && exit 0"
+  },
+  "keywords": [
+    "email",
+    "bulk",
+    "smtp",
+    "nodemailer",
+    "redis",
+    "bull"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.48.3",
+    "body-parser": "^2.2.0",
+    "bull": "^4.16.5",
+    "compression": "^1.8.1",
+    "concurrently": "^9.2.0",
+    "cookie-parser": "^1.4.7",
+    "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.4",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-rate-limit": "7.5.1",
+    "helmet": "8.1.0",
+    "html-to-text": "^9.0.5",
+    "imapflow": "^1.2.8",
+    "ioredis": "^5.6.1",
+    "jsonwebtoken": "^9.0.3",
+    "mailparser": "^3.9.3",
+    "mongoose": "^8.18.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.5",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "rate-limit-redis": "4.2.2",
+    "systeminformation": "^5.30.7",
+    "uuid": "^10.0.0",
+    "xlsx": "^0.18.5"
+  }
+}

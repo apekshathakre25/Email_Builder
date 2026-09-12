@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Email Sender | Login</title>
+    <link rel="icon" type="image/png" href="/images/favicon.ico">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/login.css">
+</head>
+
+<body>
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="logo-box">
+                    <img src="/images/favicon.ico" alt="" style="width: 100px; height: 100px;">
+                </div>
+                <h1>Welcome Back to Bulk Email Sender</h1>
+                <p>Please select your account and enter OTP or continue with Google, Only authorized personnel are
+                    allowed to access this system.</p>
+            </div>
+
+            <!-- Alert (hidden by default) -->
+            <div class="alert" id="errorAlert" style="display: none;">
+                <i id="alertIcon" class="fas fa-exclamation-circle"></i>
+                <span id="errorMessage"></span>
+                <button class="close-btn" onclick="document.getElementById('errorAlert').style.display='none'">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form action="/login" method="post" id="loginForm">
+                <div class="form-group">
+                    <label for="email">
+                        <i class="fas fa-user-circle"></i> Authorized Personnel
+                    </label>
+                    <div class="input-group">
+                        <div class="select-wrapper">
+                            <select name="email" id="email" required>
+                                <option value="" disabled selected>Choose an account...</option>
+                                <%# Driven by the AUTHORIZED_USERS env var so adding a user is a config change, not a code change. %>
+                                <% authorizedUsers.forEach(function (user) { %>
+                                <option value="<%= user.email %>"><%= user.name %></option>
+                                <% }); %>
+                            </select>
+                            <i class="fas fa-chevron-down select-icon"></i>
+                        </div>
+                        <button type="button" class="btn-send-otp" id="sendOtpBtn">
+                            <span>Send OTP</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="otp">
+                        <i class="fas fa-key"></i> One-Time Password
+                    </label>
+                    <div class="input-wrapper">
+                        <input type="text" name="otp" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" required
+                            autocomplete="one-time-code">
+                        <i class="fas fa-shield-halved input-icon"></i>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-login" id="submitBtn">
+                    <span>Sign In with OTP</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <!-- Divider -->
+            <div class="divider">
+                <span>OR</span>
+            </div>
+
+            <!-- Google Sign-in Button -->
+            <a href="/auth/google" class="btn-google">
+                <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                    <path fill="#EA4335"
+                        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                    <path fill="#4285F4"
+                        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                    <path fill="#FBBC05"
+                        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                    <path fill="#34A853"
+                        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                    <path fill="none" d="M0 0h48v48H0z" />
+                </svg>
+                <span>Sign in with Google</span>
+            </a>
+
+            <div class="auth-footer">
+                <p>&copy; 2026 Bulk Email Sender . All Rights Reserved. for any software related queries contact <a href="mailto:tejas.bansod.work@gmail.com">tejas.bansod.work@gmail.com</a> phone: <a href="tel:+919307349162">+91 9307349162</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Decoration -->
+    <div class="bg-decoration">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <script src="/js/login.js"></script>
+</body>
+
+</html>

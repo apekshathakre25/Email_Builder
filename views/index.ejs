@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>
+    <%= title %>
+  </title>
+  <link rel="icon" href="/images/favicon.ico" />
+  <link rel="stylesheet" href="/css/tokens.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/system-health.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+</head>
+
+<body>
+
+  <header class="app-topbar">
+    <span class="app-topbar__brand">
+      <i class="fa-solid fa-paper-plane"></i> Bulk Email Sender
+    </span>
+
+    <span class="app-topbar__spacer"></span>
+
+    <span class="app-topbar__user">
+      <span class="app-topbar__name">
+        <%= user ? user.name : 'User' %>
+      </span>
+      <span class="app-topbar__email">
+        <%= user ? user.email : '' %>
+      </span>
+    </span>
+
+    <button type="button" id="logout-btn" class="btn btn--danger btn--sm">
+      <i class="fa-solid fa-sign-out-alt"></i> Logout
+    </button>
+  </header>
+
+  <main class="container">
+
+    <div id="system-health-placeholder"></div>
+
+    <div class="workspace">
+
+      <form id="email-form" action="/send-email" method="post" class="workspace__form">
+
+        <div class="workspace__col">
+
+          <fieldset class="field-group">
+            <legend class="field-group__title">
+              <i class="fa-solid fa-server"></i> SMTP Credentials
+            </legend>
+
+            <div class="field">
+              <label class="field__label" for="smtp-host">SMTP Hostname or IP Address</label>
+              <input class="input" type="text" id="smtp-host" name="smtp-host" placeholder="Enter SMTP Host" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-port">SMTP Port</label>
+              <input class="input" type="text" id="smtp-port" name="smtp-port" placeholder="Enter SMTP Port" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-user">SMTP User</label>
+              <input class="input" type="text" id="smtp-user" name="smtp-user" placeholder="Enter SMTP User" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-pass">SMTP Password</label>
+              <div class="input-group">
+                <input class="input" type="password" id="smtp-pass" name="smtp-pass"
+                  placeholder="Enter SMTP Password" />
+                <button class="input-group__addon" type="button" id="toggle-smtp-pass" tabindex="-1"
+                  aria-label="Show or hide password">
+                  <i id="smtp-pass-eye" class="fa-solid fa-eye"></i>
+                </button>
+              </div>
+            </div>
+          </fieldset>
+
+          <section class="panel panel--test" id="test-status">
+            <div class="panel__header">
+              <h2 class="panel__title"><i class="fa-solid fa-flask"></i> Test Mode Live Status</h2>
+            </div>
+            <div class="panel__body">
+              <div class="stat-list">
+                <p class="stat">
+                  <i class="fa-solid fa-paper-plane"></i>
+                  <span class="stat__label">Total Sent</span>
+                  <span class="stat__value" id="test-sent">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <span class="stat__label">Total Failed</span>
+                  <span class="stat__value" id="test-failed">0</span>
+                </p>
+              </div>
+              <div class="btn-row">
+                <button type="button" id="refresh-test-stats" class="btn btn--success btn--sm">
+                  <i class="fa-solid fa-sync-alt"></i> Refresh Current status
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel panel--bulk" id="bulk-status" style="display: none;">
+            <div class="panel__header">
+              <h2 class="panel__title"><i class="fa-solid fa-chart-line"></i> Bulk Mode Live Status</h2>
+            </div>
+            <div class="panel__body">
+              <div class="stat-list">
+                <p class="stat">
+                  <i class="fa-solid fa-list"></i>
+                  <span class="stat__label">Total</span>
+                  <span class="stat__value" id="bulk-total">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-clock"></i>
+                  <span class="stat__label">Queue</span>
+                  <span class="stat__value" id="bulk-queue">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-swatchbook"></i>
+                  <span class="stat__label">Limit</span>
+                  <span class="stat__value" id="bulk-total-sending">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-hourglass-half"></i>
+                  <span class="stat__label">Pending</span>
+                  <span class="stat__value" id="bulk-pending">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-paper-plane"></i>
+                  <span class="stat__label">Total Sent</span>
+                  <span class="stat__value" id="bulk-sent">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <span class="stat__label">Total Failed</span>
+                  <span class="stat__value" id="bulk-failed">0</span>
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <p class="results-line">
+            <i class="fa-solid fa-bug"></i>
+            <span>Results: <span class="results-line__value" id="errors"></span></span>
+          </p>
+
+        </div>
+
+        <div class="workspace__col">
+
+          <fieldset class="field-group">
+            <legend class="field-group__title">
+              <i class="fa-solid fa-envelope"></i> Email Configuration
+            </legend>
+
+            <div class="field">
+              <label class="field__label" for="custom-headers">Custom Headers (Optional)</label>
+              <textarea class="textarea" id="custom-headers" name="custom-headers"
+                placeholder="Enter custom headers"></textarea>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-from-email">From Email (SMTP Authentication)</label>
+              <input class="input" type="text" id="smtp-from-email" name="smtp-from-email"
+                placeholder="Enter SMTP From Email (for authentication)" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="subject">Subject</label>
+              <input class="input" type="text" id="subject" name="subject" placeholder="Enter Subject" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-from-name">From Name</label>
+              <input class="input" type="text" id="smtp-from-name" name="smtp-from-name"
+                placeholder="Enter SMTP From Name" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="test-recp">Test Recipients (Only for Test)</label>
+              <textarea class="textarea" id="test-recp" name="test-recp" placeholder="Enter Test Recipients"></textarea>
+            </div>
+
+            <div class="choice-row">
+              <div class="choice-set">
+                <span class="choice-set__legend">Bulk or test</span>
+                <div class="choice-set__options">
+                  <span class="choice">
+                    <input type="radio" id="bulk" name="test-bulk" value="Bulk" checked />
+                    <label class="choice__label" for="bulk">Bulk</label>
+                  </span>
+                  <span class="choice">
+                    <input type="radio" id="test" name="test-bulk" value="Test" />
+                    <label class="choice__label" for="test">Test</label>
+                  </span>
+                </div>
+              </div>
+
+              <div class="checkbox-field">
+                <input type="checkbox" id="auto-imap-test" name="auto-imap-test" disabled />
+                <label class="checkbox-field__label" for="auto-imap-test">
+                  <i class="fa-solid fa-robot"></i> Auto IMAP Test
+                </label>
+              </div>
+            </div>
+
+            <div class="choice-set field">
+              <span class="choice-set__legend">Message Type</span>
+              <div class="choice-set__options">
+                <span class="choice">
+                  <input type="radio" id="plain" name="plain-html" value="Plain" />
+                  <label class="choice__label" for="plain">Plain</label>
+                </span>
+                <span class="choice">
+                  <input type="radio" id="html" name="plain-html" value="HTML" />
+                  <label class="choice__label" for="html">HTML</label>
+                </span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="message">Message/HTML</label>
+              <textarea class="textarea textarea--tall" id="message" name="message" placeholder="Enter Message"
+                rows="4"></textarea>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="file-ids">File IDs (Required for Bulk)</label>
+              <input class="input" type="text" id="file-ids" name="file-ids"
+                placeholder="e.g., session1,session2,session3" />
+              <span class="field__hint">Comma-separated. Required for bulk campaigns.</span>
+            </div>
+
+            <div class="field">
+              <label class="field__label field__label--row" for="custom-message-id">
+                Custom Message-ID (Optional)
+                <button type="button" id="message-id-help" class="btn btn--ghost btn--sm">
+                  <i class="fa-solid fa-circle-info"></i> Info
+                </button>
+              </label>
+              <input class="input" type="text" id="custom-message-id" name="custom-message-id"
+                placeholder="e.g., <[[timestamp]]-[[bigchar(6)]]-[[num(6)]]@{{Domain}}>" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="limit">Limit</label>
+              <input class="input" type="number" id="limit" name="limit" placeholder="Enter Limit" />
+            </div>
+
+            <div class="btn-row">
+              <button type="submit" class="btn btn--primary">
+                <i class="fa-solid fa-paper-plane"></i> Send Email
+              </button>
+              <button type="button" id="preview-html" class="btn btn--secondary">
+                <i class="fa-solid fa-eye"></i> Preview Message/HTML
+              </button>
+              <button type="button" id="info" class="btn btn--secondary">
+                <i class="fa-solid fa-circle-info"></i> Info
+              </button>
+            </div>
+          </fieldset>
+
+        </div>
+
+      </form>
+
+      <aside class="workspace__aside">
+
+        <section class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="fa-solid fa-chart-bar"></i> Test Results</h2>
+            <span class="badge badge--neutral" id="test-mode-indicator">Manual Testing</span>
+          </div>
+
+          <div class="panel__body">
+            <div class="toolbar">
+              <button type="button" id="refresh-test-results" class="btn btn--info btn--sm">
+                <i class="fa-solid fa-sync-alt"></i> Refresh
+              </button>
+              <button type="button" id="clear-test-results" class="btn btn--danger btn--sm">
+                <i class="fa-solid fa-trash"></i> Delete All
+              </button>
+              <a href="/imapac" target="_blank" rel="noopener" class="btn btn--accent btn--sm">
+                <i class="fa-solid fa-user-gear"></i> Manage IMAP Accounts
+              </a>
+            </div>
+
+            <div class="table-scroll" id="test-results-container">
+              <table class="table" id="test-results-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Test Email</th>
+                    <th scope="col">IP</th>
+                    <th scope="col" class="is-center">Status</th>
+                    <th scope="col">Date</th>
+                    <th scope="col" class="is-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="test-results-body">
+                  <tr>
+                    <td colspan="5">
+                      <div class="empty-state">
+                        <i class="fa-solid fa-inbox"></i>
+                        No test results available. Send test emails to see results here.
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <div class="callout" id="current-email-display" style="display: none;">
+          <div class="callout__row">
+            <p class="callout__text">
+              <i class="fa-solid fa-envelope"></i>
+              <span>Checking emails for: <span class="callout__value" id="current-email-text"></span></span>
+            </p>
+            <button type="button" id="check-both" class="btn btn--accent btn--sm">
+              <i class="fa-solid fa-sync-alt"></i> Check Manually
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+
+  </main>
+
+  <script>
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      if (confirm('Are you sure you want to logout?')) {
+        try {
+          const response = await fetch('/logout', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const data = await response.json();
+          if (data.success) {
+            window.location.href = '/';
+          }
+        } catch (error) {
+          console.error('Logout error:', error);
+          alert('An error occurred during logout');
+        }
+      }
+    });
+  </script>
+  <script src="/js/message-id-help.js"></script>
+  <script src="/js/system-health.js"></script>
+  <script src="/js/recipents-upload.js"></script>
+  <script src="/js/imap-checker.js"></script>
+</body>
+
+</html>
