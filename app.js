@@ -114,6 +114,33 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 
+/**
+ * Keep-alive probe.
+ *
+ * Render idles an instance out after a stretch with no inbound traffic, and the
+ * cold start that follows costs the first visitor ~30s. The front-end polls this
+ * on an interval so an open tab keeps the instance warm.
+ *
+ * Deliberately does no Mongo, Redis, or systeminformation work: it has to stay
+ * cheap enough to hit repeatedly, and it must still answer 200 while a
+ * dependency is degraded — otherwise an uptime monitor would read a slow queue
+ * as the whole app being down. Use /api/system-health for real diagnostics.
+ *
+ * Registered before the authenticateToken mounts below (which match every path)
+ * so it stays reachable without a session, and returns nothing sensitive.
+ */
+app.get('/healthz', (req, res) => {
+  // Without no-store the browser serves a cached 200 and never actually reaches
+  // the server, which would defeat the whole point of polling.
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    status: 'ok',
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
+});
+
+
 app.get('/', redirectIfAuthenticated, (req, res) => {
   res.render('login', {
     title: 'Login',
