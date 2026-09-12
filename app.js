@@ -172,7 +172,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-const server = app.listen(PORT, () => {
+// Bind to 0.0.0.0 (not the default localhost) so Render's proxy can reach the
+// container from outside; localhost-only binds fail their port health check.
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 
   // Tells PM2 (wait_ready: true) that this worker is accepting connections, so
