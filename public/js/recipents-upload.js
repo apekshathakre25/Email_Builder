@@ -3,18 +3,15 @@ let lastLimit = 0;
 let lastBatchCount = 0;
 let isSending = false;
 
-
 let currentLogs = [];
 let currentPage = 1;
 let totalPages = 1;
 let logsPerPage = 10;
 
-
 let currentFiles = [];
 let currentFilePage = 1;
 let totalFilePages = 1;
 let filesPerPage = 10;
-
 
 async function loadFiles(page = 1) {
   try {
@@ -37,12 +34,11 @@ async function loadFiles(page = 1) {
   }
 }
 
-
 async function loadLogs(page = 1, retries = 3) {
   try {
     const cacheBuster = Date.now();
     const response = await fetch(`/logs?page=${page}&limit=${logsPerPage}&sortBy=createdAt&sortOrder=desc&_=${cacheBuster}`);
-    
+
     if (!response.ok) {
 
        throw new Error(`Failed to load logs (HTTP ${response.status})`);
@@ -57,14 +53,14 @@ async function loadLogs(page = 1, retries = 3) {
     return data;
   } catch (error) {
     console.warn(`Attempt to load logs failed: ${error.message}. Retries left: ${retries}`);
-    
+
     if (retries > 0) {
 
        const delay = (4 - retries) * 1000;
        await new Promise(resolve => setTimeout(resolve, delay));
        return loadLogs(page, retries - 1);
     }
-    
+
     console.error('Final attempt to load logs failed:', error);
 
     if (!isPolling) {
@@ -73,7 +69,6 @@ async function loadLogs(page = 1, retries = 3) {
     return null;
   }
 }
-
 
 function updateLogDisplay() {
   const logCount = currentLogs.length;
@@ -91,14 +86,6 @@ function updateLogDisplay() {
   }
 }
 
-
-
-/**
- * Connection details are remembered for convenience. The password is
- * deliberately excluded: localStorage persists indefinitely and is readable by
- * any script on the origin, so a single XSS would hand over the SMTP
- * credential. It has to be re-entered per session.
- */
 const smtpFields = [
   { id: 'smtp-host', key: 'smtpHost' },
   { id: 'smtp-port', key: 'smtpPort' },
@@ -108,7 +95,7 @@ const smtpFields = [
 const LEGACY_SMTP_PASS_KEY = 'smtpPass';
 
 function loadSmtpCreds() {
-  // Remove any password persisted by an earlier version of this file.
+
   localStorage.removeItem(LEGACY_SMTP_PASS_KEY);
 
   smtpFields.forEach(f => {
@@ -135,7 +122,6 @@ if (emailForm) {
   emailForm.addEventListener('submit', function (e) {
     e.preventDefault();
     saveSmtpCreds();
-
 
     if (bulkRadio && bulkRadio.checked) {
       const fileIdsField = document.getElementById('file-ids');
@@ -166,7 +152,7 @@ if (emailForm) {
       if (fileIds) {
         const fileIdArray = fileIds.split(',').map(id => id.trim()).filter(id => id);
         if (fileIdArray.length > 0) {
- 
+
           sessionId = fileIdArray[0];
           formData.append('sessionId', sessionId);
           console.log('Added bulk sessionId to form:', sessionId);
@@ -180,7 +166,6 @@ if (emailForm) {
 
     lastLimit = parseInt(formData.get('limit')) || 0;
     isSending = true;
-
 
     const formDataObj = Object.fromEntries(formData.entries());
     console.log('Sending form data:', formDataObj);
@@ -244,7 +229,6 @@ if (emailForm) {
   });
 }
 
-
 let statusTimeout = null;
 let isPolling = false;
 
@@ -252,9 +236,9 @@ function startStatusPolling() {
   if (isPolling) return;
   isPolling = true;
   console.log('Starting status polling with sessionId:', sessionId);
-  
+
   if (statusTimeout) clearTimeout(statusTimeout);
-  
+
   if (!sessionId) {
     console.log('No sessionId available for status polling');
     isPolling = false;
@@ -267,20 +251,19 @@ function startStatusPolling() {
        statusTimeout = setTimeout(runPoll, 2000);
        return;
     }
-    
+
     await pollStatus();
-    
+
     let pollInterval = 2000;
 
     if (isSending) {
       pollInterval = 1000;
     }
-    
+
     statusTimeout = setTimeout(runPoll, pollInterval);
   };
-  
+
   runPoll();
-  
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && isPolling) {
@@ -301,14 +284,14 @@ function stopStatusPolling() {
 
 async function pollStatus() {
   if (!sessionId) return;
-  
+
   try {
     const res = await fetch(`/status?sessionId=${sessionId}`);
     if (!res.ok) {
        console.error('Status fetch failed');
        return;
     }
-    
+
     const data = await res.json();
     if (data.total !== undefined) {
 
@@ -325,16 +308,13 @@ async function pollStatus() {
         const queueCount = data.sending || 0;
         const queueEl = document.getElementById(prefix + 'queue');
         if (queueEl) queueEl.textContent = queueCount;
-        
 
         const totalSendingEl = document.getElementById(prefix + 'total-sending');
         if (totalSendingEl) totalSendingEl.textContent = lastLimit;
-        
 
         const pending = Math.max(0, data.total - (data.sent || 0) - (data.failed || 0));
         const pendingEl = document.getElementById(prefix + 'pending');
         if (pendingEl) pendingEl.textContent = pending;
-        
 
         document.getElementById(prefix + 'sent').textContent = data.sent || 0;
 
@@ -343,7 +323,6 @@ async function pollStatus() {
 
       window.currentSessionId = sessionId;
 
-
       if ((data.sent + data.failed) >= (data.sentIndex || 0)) {
         isSending = false;
 
@@ -351,7 +330,7 @@ async function pollStatus() {
            stopStatusPolling();
         }
       }
-      
+
       if (data.lastError) {
         showError(data.lastError);
       } else {
@@ -363,12 +342,10 @@ async function pollStatus() {
   }
 }
 
-
 function showError(msg) {
   const errBox = document.getElementById('errors');
   if (errBox) errBox.textContent = msg;
 }
-
 
 const previewBtn = document.getElementById('preview-html');
 if (previewBtn) {
@@ -397,7 +374,6 @@ function showPopup(title, html) {
   let oldPopup = document.getElementById('custom-popup');
   if (oldPopup) oldPopup.remove();
 
-
   const popup = document.createElement('div');
   popup.id = 'custom-popup';
   popup.style.position = 'fixed';
@@ -414,14 +390,12 @@ function showPopup(title, html) {
   popup.style.minWidth = '280px';
   popup.style.width = '90vw';
   popup.style.maxWidth = title === 'Preview' ? '900px' : '95vw';
-  popup.style.padding = '2.5em 3em 1em 1em'; 
-
+  popup.style.padding = '2.5em 3em 1em 1em';
 
   if (window.innerWidth < 400) {
     popup.style.padding = '2.5em 2em 0.5em 0.5em';
     popup.style.minWidth = '0';
   }
-
 
   const closeBtn = document.createElement('button');
   closeBtn.id = 'close-popup';
@@ -441,13 +415,11 @@ function showPopup(title, html) {
   };
   popup.appendChild(closeBtn);
 
-
   const h3 = document.createElement('h3');
   h3.textContent = title;
   h3.style.marginTop = '0';
   h3.style.marginRight = '0';
   popup.appendChild(h3);
-
 
   const contentDiv = document.createElement('div');
   contentDiv.id = 'popup-content';
@@ -471,7 +443,6 @@ function showPopup(title, html) {
   popup.style.display = 'block';
 }
 
-
 const testRadio = document.getElementById('test');
 const bulkRadio = document.getElementById('bulk');
 const testRecpTextarea = document.getElementById('test-recp');
@@ -492,7 +463,6 @@ function updateModeUI() {
 
     if (testStatusBox) testStatusBox.style.display = 'none';
     if (bulkStatusBox) bulkStatusBox.style.display = 'block';
-
 
     updateLiveStatusFromFileIds();
   }
@@ -555,7 +525,7 @@ if (infoBtn) {
             <li><b>Total Failed:</b> Emails that failed to send</li>
           </ul>
         </li>
-        <li><b>6. File Management:</b> 
+        <li><b>6. File Management:</b>
           <ul>
             <li><b>File Storage:</b> All uploaded recipient files are stored on the server</li>
             <li><b>File Statistics:</b> Track total, valid, invalid, sent, failed, and pending emails for each file</li>
@@ -566,7 +536,7 @@ if (infoBtn) {
             <li><b>Log Preservation:</b> Campaign logs are preserved even when files are deleted</li>
           </ul>
         </li>
-        <li><b>7. Database Logs:</b> 
+        <li><b>7. Database Logs:</b>
           <ul>
             <li><b>MongoDB Storage:</b> All email logs are automatically saved in MongoDB database</li>
             <li><b>Persistent Logs:</b> Logs remain available even after server restarts</li>
@@ -613,14 +583,12 @@ if (infoBtn) {
   });
 }
 
-
 const logBtn = document.getElementById('Download-log');
 if (logBtn) {
   logBtn.addEventListener('click', function () {
     showLogSelectionPopup();
   });
 }
-
 
 async function updateLiveStatusForTestMode() {
   const testRecpField = document.getElementById('test-recp');
@@ -645,10 +613,8 @@ async function updateLiveStatusForTestMode() {
       return;
     }
 
-
-    document.getElementById('test-sent').textContent = '0'; 
-    document.getElementById('test-failed').textContent = '0'; 
-
+    document.getElementById('test-sent').textContent = '0';
+    document.getElementById('test-failed').textContent = '0';
 
     sessionId = null;
 
@@ -668,7 +634,6 @@ async function refreshTestModeStats() {
       return;
     }
 
-
     const response = await fetch(`/status?sessionId=${sessionId}`);
     if (!response.ok) {
       throw new Error('Failed to fetch current test campaign status');
@@ -687,21 +652,19 @@ async function refreshTestModeStats() {
   }
 }
 
-
 async function updateLiveStatusFromFileIds() {
   const fileIdsField = document.getElementById('file-ids');
   if (!fileIdsField) return;
 
   const fileIds = fileIdsField.value.trim();
   if (!fileIds) {
- 
+
     document.getElementById('bulk-total').textContent = '0';
     document.getElementById('bulk-queue').textContent = '0';
     document.getElementById('bulk-total-sending').textContent = '0';
     document.getElementById('bulk-pending').textContent = '0';
     document.getElementById('bulk-sent').textContent = '0';
     document.getElementById('bulk-failed').textContent = '0';
-
 
     sessionId = null;
     return;
@@ -711,7 +674,6 @@ async function updateLiveStatusFromFileIds() {
 
     const fileIdArray = fileIds.split(',').map(id => id.trim()).filter(id => id);
 
-
     const response = await fetch('/files-stats');
     if (!response.ok) {
       throw new Error('Failed to fetch file statistics');
@@ -719,8 +681,7 @@ async function updateLiveStatusFromFileIds() {
 
     const stats = await response.json();
 
- 
-    const filesResponse = await fetch('/files?limit=1000'); 
+    const filesResponse = await fetch('/files?limit=1000');
     if (!filesResponse.ok) {
       throw new Error('Failed to fetch files');
     }
@@ -733,23 +694,19 @@ async function updateLiveStatusFromFileIds() {
       return;
     }
 
-
     const totalValidEmails = selectedFiles.reduce((sum, file) => sum + file.validEmails, 0);
     const totalSentEmails = selectedFiles.reduce((sum, file) => sum + file.sentEmails, 0);
     const totalFailedEmails = selectedFiles.reduce((sum, file) => sum + file.failedEmails, 0);
     const totalPendingEmails = selectedFiles.reduce((sum, file) => sum + file.pendingEmails, 0);
 
- 
     document.getElementById('bulk-total').textContent = totalValidEmails;
-    document.getElementById('bulk-queue').textContent = '0'; 
-    document.getElementById('bulk-total-sending').textContent = '0'; 
-    document.getElementById('bulk-pending').textContent = totalPendingEmails; 
+    document.getElementById('bulk-queue').textContent = '0';
+    document.getElementById('bulk-total-sending').textContent = '0';
+    document.getElementById('bulk-pending').textContent = totalPendingEmails;
     document.getElementById('bulk-sent').textContent = totalSentEmails;
     document.getElementById('bulk-failed').textContent = totalFailedEmails;
 
-
     window.selectedFileIds = fileIdArray;
-
 
     if (fileIdArray.length > 0) {
       sessionId = fileIdArray[0];
@@ -762,10 +719,6 @@ async function updateLiveStatusFromFileIds() {
     showError('❌ Failed to update live status: ' + error.message);
   }
 }
-
-
-
-
 
 async function showLogSelectionPopup() {
   try {
@@ -781,7 +734,6 @@ async function showLogSelectionPopup() {
     }
 
     let popupContent = '<div style="margin-bottom: 15px;"><b>Select a log to download:</b></div>';
-
 
     popupContent += '<div style="margin-bottom: 15px; text-align: center;">';
     popupContent += '<button onclick="refreshLogPopup()" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">';
@@ -804,7 +756,6 @@ async function showLogSelectionPopup() {
     const testLogs = currentLogs.filter(log => log.sessionId.startsWith('test-'));
     const bulkLogs = currentLogs.filter(log => !log.sessionId.startsWith('test-'));
 
-
     popupContent += '<div style="display: flex; gap: 20px; margin-bottom: 20px;">';
 
     popupContent += '<div style="flex: 1;">';
@@ -819,7 +770,7 @@ async function showLogSelectionPopup() {
         const statusColor = log.status === 'in_progress' ? 'orange' : log.status === 'completed' ? 'green' : 'red';
 
         popupContent += `
-          <div style="border: 1px solid #ddd; margin: 5px 0; padding: 10px; border-radius: 5px; cursor: pointer; background: #f8fff9;" 
+          <div style="border: 1px solid #ddd; margin: 5px 0; padding: 10px; border-radius: 5px; cursor: pointer; background: #f8fff9;"
                onclick="downloadSelectedLog('${log.sessionId}')">
             <div style="font-weight: bold;">Session: ${log.sessionId}</div>
             <div style="font-size: 0.9em; color: #666;">Date: ${date}</div>
@@ -855,7 +806,7 @@ async function showLogSelectionPopup() {
         const statusColor = log.status === 'in_progress' ? 'orange' : log.status === 'completed' ? 'green' : 'red';
 
         popupContent += `
-          <div style="border: 1px solid #ddd; margin: 5px 0; padding: 10px; border-radius: 5px; cursor: pointer; background: #f8fbff;" 
+          <div style="border: 1px solid #ddd; margin: 5px 0; padding: 10px; border-radius: 5px; cursor: pointer; background: #f8fbff;"
                onclick="downloadSelectedLog('${log.sessionId}')">
             <div style="font-weight: bold;">Session: ${log.sessionId}</div>
             <div style="font-size: 0.9em; color: #666;">Date: ${date}</div>
@@ -911,10 +862,10 @@ function startLogPopupAutoRefresh() {
   if (logPopupRefreshInterval) {
     clearTimeout(logPopupRefreshInterval);
   }
-  
+
   const runRefresh = async () => {
-    if (!logPopupRefreshInterval) return; 
-    
+    if (!logPopupRefreshInterval) return;
+
     if (document.hidden) {
       logPopupRefreshInterval = setTimeout(runRefresh, 5000);
       return;
@@ -929,7 +880,7 @@ function startLogPopupAutoRefresh() {
       stopLogPopupAutoRefresh();
     }
   };
-  
+
   logPopupRefreshInterval = setTimeout(runRefresh, 5000);
 }
 
@@ -939,7 +890,6 @@ function stopLogPopupAutoRefresh() {
     logPopupRefreshInterval = null;
   }
 }
-
 
 async function downloadSelectedLog(sessionId) {
   try {
@@ -960,7 +910,6 @@ async function downloadSelectedLog(sessionId) {
     a.remove();
     showError('');
 
-
     const popup = document.getElementById('custom-popup');
     if (popup) popup.remove();
   } catch (error) {
@@ -968,14 +917,12 @@ async function downloadSelectedLog(sessionId) {
   }
 }
 
-
 const deleteBtn = document.getElementById('delete-log');
 if (deleteBtn) {
   deleteBtn.addEventListener('click', function () {
     showDeleteLogPopup();
   });
 }
-
 
 async function showDeleteLogPopup() {
   try {
@@ -1029,7 +976,7 @@ async function showDeleteLogPopup() {
                 </div>
                 <div style="color: ${statusColor}; font-weight: bold;">Status: ${status}</div>
               </div>
-              <button onclick="deleteSelectedLog('${log.sessionId}')" 
+              <button onclick="deleteSelectedLog('${log.sessionId}')"
                       style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; margin-left: 10px;">
                 <i class="fa-solid fa-trash"></i> Delete
               </button>
@@ -1072,7 +1019,7 @@ async function showDeleteLogPopup() {
             </div>
             <div style="color: ${statusColor}; font-weight: bold;">Status: ${status}</div>
           </div>
-          <button onclick="deleteSelectedLog('${log.sessionId}')" 
+          <button onclick="deleteSelectedLog('${log.sessionId}')"
                   style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; margin-left: 10px;">
             <i class="fa-solid fa-trash"></i> Delete
           </button>
@@ -1105,12 +1052,10 @@ async function showDeleteLogPopup() {
   }
 }
 
-
 async function changeDeletePage(page) {
   await loadLogs(page);
   showDeleteLogPopup();
 }
-
 
 async function deleteSelectedLog(sessionId) {
   try {
@@ -1124,9 +1069,7 @@ async function deleteSelectedLog(sessionId) {
 
     showError(`✅ Log for session ${sessionId} deleted successfully.`);
 
-
     await loadLogs(currentPage);
-
 
     const popup = document.getElementById('custom-popup');
     if (popup) popup.remove();
@@ -1134,7 +1077,6 @@ async function deleteSelectedLog(sessionId) {
     showError('Delete failed: ' + error.message);
   }
 }
-
 
 async function deleteAllLogs() {
   try {
@@ -1149,9 +1091,7 @@ async function deleteAllLogs() {
     const result = await response.json();
     showError(`✅ ${result.message}`);
 
-
     await loadLogs(1);
-
 
     const popup = document.getElementById('custom-popup');
     if (popup) popup.remove();
@@ -1159,7 +1099,6 @@ async function deleteAllLogs() {
     showError('Delete all failed: ' + error.message);
   }
 }
-
 
 window.addEventListener('DOMContentLoaded', function () {
   const passInput = document.getElementById('smtp-pass');
@@ -1179,7 +1118,6 @@ window.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-
   const fileIdsField = document.getElementById('file-ids');
   if (fileIdsField) {
 
@@ -1188,7 +1126,7 @@ window.addEventListener('DOMContentLoaded', function () {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         updateLiveStatusFromFileIds();
-      }, 500); 
+      }, 500);
     });
 
     fileIdsField.addEventListener('blur', function () {
@@ -1196,7 +1134,6 @@ window.addEventListener('DOMContentLoaded', function () {
       updateLiveStatusFromFileIds();
     });
   }
-
 
   const testRecpField = document.getElementById('test-recp');
   if (testRecpField) {
@@ -1206,16 +1143,14 @@ window.addEventListener('DOMContentLoaded', function () {
       clearTimeout(testDebounceTimer);
       testDebounceTimer = setTimeout(() => {
         updateLiveStatusForTestMode();
-      }, 500); 
+      }, 500);
     });
-
 
     testRecpField.addEventListener('blur', function () {
       clearTimeout(testDebounceTimer);
       updateLiveStatusForTestMode();
     });
   }
-
 
   loadLogs();
 });

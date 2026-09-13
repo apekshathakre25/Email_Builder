@@ -1275,3 +1275,79 @@ fieldset:not(.field-group) button:not(.btn):hover,
 #close-popup:hover {
   color: var(--danger-500);
 }
+
+/* --------------------------------------------------------------------------
+   Confirm dialog
+   A compact modal for yes/no confirmations (e.g. logout). Reuses the .modal
+   primitives above and adds a narrow panel, a footer action row and an
+   accent icon. Entrance animation is applied to the shared .modal primitives
+   so every modal fades/lifts in consistently; prefers-reduced-motion is
+   already neutralised globally in tokens.css.
+   -------------------------------------------------------------------------- */
+
+.modal {
+  animation: modalOverlayIn var(--dur-base) var(--ease);
+}
+
+.modal__panel {
+  animation: modalPanelIn var(--dur-base) var(--ease);
+}
+
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalPanelIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.modal__panel--sm {
+  max-width: 440px;
+}
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.confirm {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+}
+
+.confirm__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--danger-100);
+  color: var(--danger-500);
+  font-size: 1.375rem;
+}
+
+.confirm__message {
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+}
+
+@media (max-width: 480px) {
+  .modal__footer {
+    flex-direction: column-reverse;
+  }
+
+  .modal__footer .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

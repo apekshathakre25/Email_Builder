@@ -23,20 +23,8 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-/**
- * Extensions the /recipients handler can actually parse. Anything else was
- * previously written to disk before being rejected further down; filtering here
- * means unusable uploads never touch the filesystem.
- */
 const ALLOWED_UPLOAD_EXTENSIONS = new Set(['.csv', '.txt', '.xlsx', '.xls', '.json']);
 
-/**
- * Strips any directory component from a client-supplied filename.
- *
- * multer's originalname is attacker-controlled: a name like "..\\..\\app.js"
- * would otherwise escape the uploads directory when joined to a path. Taking
- * only the basename and whitelisting characters keeps writes inside uploadsDir.
- */
 function safeFileName(originalName) {
   const base = path.basename(String(originalName || 'upload'));
   const cleaned = base.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
@@ -46,8 +34,8 @@ function safeFileName(originalName) {
 const upload = multer({
   dest: uploadsDir,
   limits: {
-    fileSize: env.maxUploadBytes, // MAX_UPLOAD_MB, default 25MB
-    files: 1,                     // /recipients only ever expects one
+    fileSize: env.maxUploadBytes,
+    files: 1,
     fields: 50,
     fieldNameSize: 200
   },
@@ -73,7 +61,7 @@ function isValidEmail(email) {
 async function storeRecipients(sessionId, recipients) {
   const key = `recipients:${sessionId}`;
   await redisClient.del(key);
-  
+
   if (!recipients || recipients.length === 0) return;
 
   const chSize = 5000;
@@ -89,7 +77,6 @@ async function getRecipients(sessionId) {
 
     const list = await redisClient.lrange(key, 0, -1);
     if (list && list.length > 0) return list;
-    
 
     const type = await redisClient.type(key);
     if (type === 'string') {
@@ -109,7 +96,6 @@ async function getRecipients(sessionId) {
   }
 }
 
-
 async function getSentIndex(sessionId) {
   const idx = await redisClient.get(`sentIndex:${sessionId}`);
   return idx ? parseInt(idx) : 0;
@@ -118,7 +104,6 @@ async function getSentIndex(sessionId) {
 async function setSentIndex(sessionId, idx) {
   await redisClient.set(`sentIndex:${sessionId}`, idx.toString());
 }
-
 
 async function getLogStats(logKey) {
   const logs = await redisClient.lrange(logKey, 0, -1);
@@ -180,7 +165,6 @@ router.post('/recipients', upload.single('file'), async (req, res) => {
     const invalidRecipients = [];
     const seen = new Set();
 
-
     for (let email of emails) {
       if (!email) continue;
       const trimmed = email.trim().toLowerCase();
@@ -194,7 +178,6 @@ router.post('/recipients', upload.single('file'), async (req, res) => {
       }
     }
 
-
     emails = [];
 
     const sessionId = req.headers['x-session-id'] || uuidv4();
@@ -203,9 +186,7 @@ router.post('/recipients', upload.single('file'), async (req, res) => {
     const newFileName = `${sessionId}_${timestamp}_${safeFileName(file.originalname)}`;
     const newFilePath = path.join(uploadsDir, newFileName);
 
-
     fs.renameSync(filePath, newFilePath);
-
 
     const uploadedFile = new UploadedFile({
       originalName: file.originalname,
@@ -221,7 +202,6 @@ router.post('/recipients', upload.single('file'), async (req, res) => {
     });
 
     await uploadedFile.save();
-
 
     await storeRecipients(sessionId, validRecipients);
 
@@ -292,14 +272,12 @@ router.post('/send-email', async (req, res) => {
         return res.status(400).json({ error: 'Please provide at least one valid File ID for bulk campaigns.' });
       }
 
-
       for (const fileId of selectedFileIds) {
         const file = await UploadedFile.findOne({ sessionId: fileId });
         if (!file) {
           return res.status(400).json({ error: `File ID "${fileId}" not found. Please check your file IDs.` });
         }
       }
-
 
       let recipientDetails = [];
       for (const fileId of selectedFileIds) {
@@ -310,7 +288,6 @@ router.post('/send-email', async (req, res) => {
       }
 
       if (!recipientDetails.length) return res.status(400).json({ error: 'No valid recipients found in specified files' });
-
 
       const seen = new Set();
       let uniqueRecipients = [];
@@ -324,7 +301,6 @@ router.post('/send-email', async (req, res) => {
       recipients = uniqueRecipients.map(i => i.email);
 
       req.recipientSourceMap = uniqueRecipients;
-
 
       sessionId = selectedFileIds[0];
     }
@@ -346,7 +322,6 @@ router.post('/send-email', async (req, res) => {
     const from = `${fromName} <${fromEmail}>`;
     const isHtml = plainHtml === 'HTML';
 
-
     let headers = {};
     if (customHeaders && customHeaders.trim()) {
       logger.debug('Raw custom headers received:', customHeaders);
@@ -364,8 +339,6 @@ router.post('/send-email', async (req, res) => {
       logger.debug('Parsed custom headers:', JSON.stringify(headers, null, 2));
     }
 
-
-
     let processedMessageId = null;
     if (customMessageId && customMessageId.trim()) {
 
@@ -377,12 +350,10 @@ router.post('/send-email', async (req, res) => {
       logger.debug('Sender domain for {{Domain}} replacement:', senderDomain);
     }
 
-
-
     let emailLog;
     if (testBulk === 'Test') {
       emailLog = new EmailLog({
-        sessionId: sessionId, 
+        sessionId: sessionId,
         fromEmail,
         fromName,
         subject,
@@ -395,7 +366,7 @@ router.post('/send-email', async (req, res) => {
         status: 'in_progress'
       });
     } else {
-  
+
       emailLog = await EmailLog.findOne({ sessionId });
       if (!emailLog) {
         emailLog = new EmailLog({
@@ -413,7 +384,6 @@ router.post('/send-email', async (req, res) => {
         });
       }
 
-
       for (const fileId of selectedFileIds) {
         await UploadedFile.findOneAndUpdate(
           { sessionId: fileId },
@@ -428,7 +398,6 @@ router.post('/send-email', async (req, res) => {
     }
     await emailLog.save();
 
-
     let finalMessage = message;
     if (isHtml && finalMessage && finalMessage.startsWith('%3C') && !finalMessage.includes('<html')) {
       try {
@@ -439,7 +408,6 @@ router.post('/send-email', async (req, res) => {
       }
     }
 
-
     if (isHtml && finalMessage) {
       const sampleDir = path.join(uploadsDir, 'sample');
 
@@ -448,7 +416,6 @@ router.post('/send-email', async (req, res) => {
           fs.mkdirSync(sampleDir, { recursive: true });
         }
 
-     
         // The SMTP password is deliberately NOT recorded here. These sample
         // files persist on disk purely as a rendering preview, and writing the
         // credential into them exposed it to anything that could read the
@@ -465,14 +432,12 @@ router.post('/send-email', async (req, res) => {
 
         const fileContent = `<!-- MetaData:\n${metadata}\n-->\n${finalMessage}`;
 
-
         const contentHash = crypto.createHash('md5').update(fileContent).digest('hex');
         const samplePath = path.join(sampleDir, `sample_${contentHash}.html`);
 
         if (!fs.existsSync(samplePath)) {
           fs.writeFileSync(samplePath, fileContent, 'utf8');
         }
-
 
         const files = fs.readdirSync(sampleDir);
         const htmlFiles = files
@@ -569,18 +534,15 @@ router.post('/send-email', async (req, res) => {
           };
         });
 
-
         await emailQueue.addBulk(jobs);
 
         if (testBulk !== 'Test') {
           await setSentIndex(sessionId, (await getSentIndex(sessionId)) + batch.length);
         }
 
-
         if (testBulk === 'Test' && isAutoImapTest && testRecords.length > 0) {
           try {
             const userId = req.user?.email || 'unknown';
-
 
             const deleteResult = await ImapTestResult.deleteMany({
               userId,
@@ -590,7 +552,6 @@ router.post('/send-email', async (req, res) => {
             if (deleteResult.deletedCount > 0) {
               logger.info(`🗑️ Deleted ${deleteResult.deletedCount} old completed test results for user ${userId} before sending new tests`);
             }
-
 
             await ImapTestResult.insertMany(testRecords);
           } catch (saveErr) {
@@ -644,7 +605,6 @@ router.get('/status', async (req, res) => {
     const sentIndex = await getSentIndex(sessionId);
 
     const sending = Math.max(0, sentIndex - sent - failed);
-
 
     lastError = emailLog ? (emailLog.lastError || '') : '';
 
@@ -732,7 +692,6 @@ router.get('/logs/:sessionId', async (req, res) => {
   }
 });
 
-
 router.get('/logs-stats', async (req, res) => {
   try {
     const stats = await EmailLog.getStatistics();
@@ -749,7 +708,6 @@ router.get('/logs-stats', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.delete('/logs/:sessionId', async (req, res) => {
   try {
@@ -773,7 +731,7 @@ router.delete('/logs', async (req, res) => {
   try {
     await EmailLog.deleteMany({});
     await EmailLogEntry.deleteMany({});
-    
+
     res.json({
       message: `All ${result.deletedCount} logs and their entries deleted successfully`
     });
@@ -843,7 +801,6 @@ router.get('/files', async (req, res) => {
   }
 });
 
-
 router.get('/files-stats', async (req, res) => {
   try {
     const stats = await UploadedFile.getFileStatistics();
@@ -862,7 +819,6 @@ router.get('/files-stats', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.get('/files/:sessionId/original', async (req, res) => {
   try {
@@ -884,7 +840,6 @@ router.get('/files/:sessionId/original', async (req, res) => {
   }
 });
 
-
 router.get('/files/:sessionId/sent', async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -903,7 +858,6 @@ router.get('/files/:sessionId/sent', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.get('/files/:sessionId/failed', async (req, res) => {
   try {
@@ -934,16 +888,13 @@ router.get('/files/:sessionId/pending', async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-
     const originalEmails = await getRecipients(sessionId);
-    
 
     let processedEmails = [];
     const entries = await EmailLogEntry.find({ sessionId }).select('email').lean();
     processedEmails = entries.map(entry => entry.email);
-    
-    const processedSet = new Set(processedEmails);
 
+    const processedSet = new Set(processedEmails);
 
     const pendingEmails = originalEmails.filter(email => !processedSet.has(email));
 
@@ -957,7 +908,6 @@ router.get('/files/:sessionId/pending', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.delete('/files/delete-all', async (req, res) => {
   console.log('🗑️ DELETE ALL FILES ROUTE HIT');
@@ -974,11 +924,9 @@ router.delete('/files/delete-all', async (req, res) => {
     let deletedCount = 0;
     let failedCount = 0;
 
-
     for (const file of files) {
       try {
         console.log(`🗑️ Deleting file: ${file.sessionId} - ${file.originalName}`);
-
 
         if (fs.existsSync(file.storedPath)) {
           fs.unlinkSync(file.storedPath);
@@ -986,7 +934,6 @@ router.delete('/files/delete-all', async (req, res) => {
         } else {
           console.log(`⚠️ File not found on disk: ${file.storedPath}`);
         }
-
 
         await UploadedFile.deleteOne({ sessionId: file.sessionId });
         console.log(`✅ Deleted from database: ${file.sessionId}`);
@@ -1008,7 +955,6 @@ router.delete('/files/delete-all', async (req, res) => {
   }
 });
 
-
 router.delete('/files/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -1018,14 +964,11 @@ router.delete('/files/:sessionId', async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-
     if (fs.existsSync(file.storedPath)) {
       fs.unlinkSync(file.storedPath);
     }
 
-
     await UploadedFile.deleteOne({ sessionId });
-
 
     res.json({ message: 'File deleted successfully. Campaign logs are preserved for history.' });
   } catch (err) {

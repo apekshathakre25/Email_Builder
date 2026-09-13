@@ -1,4 +1,3 @@
-
 function generateRandom(charset, length) {
     let result = '';
     for (let i = 0; i < length; i++) {
@@ -7,15 +6,12 @@ function generateRandom(charset, length) {
     return result;
 }
 
-
 function asciiToHex(text) {
     return text.split('').map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
 }
 
-
 function generateRFCDate(timezone) {
     const now = new Date();
-
 
     const timezoneOffsets = {
         'UTC': '+0000',
@@ -26,7 +22,6 @@ function generateRFCDate(timezone) {
 
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 
     const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
 
@@ -42,11 +37,9 @@ function generateRFCDate(timezone) {
     return `${dayName}, ${day} ${month} ${year} ${hours}:${minutes}:${seconds} ${offset}`;
 }
 
-
 function processPlaceholder(placeholder, domain = 'example.com') {
 
     placeholder = placeholder.trim();
-
 
     const match = placeholder.match(/^([a-zA-Z_0-9]+)\(([^)]*)\)$/);
     if (!match) {
@@ -66,7 +59,7 @@ function processPlaceholder(placeholder, domain = 'example.com') {
     const HEX = '0123456789abcdef';
 
     switch (funcName.toLowerCase()) {
-   
+
         case 'bigchar':
             return generateRandom(UPPERCASE, length);
 
@@ -79,7 +72,6 @@ function processPlaceholder(placeholder, domain = 'example.com') {
         case 'num':
             return generateRandom(DIGITS, length);
 
-   
         case 'mixsmallalphanum':
             return generateRandom(LOWERCASE + DIGITS, length);
 
@@ -89,11 +81,9 @@ function processPlaceholder(placeholder, domain = 'example.com') {
         case 'mixall':
             return generateRandom(LOWERCASE + UPPERCASE + DIGITS, length);
 
-   
         case 'hexdigit':
             return generateRandom(HEX, length);
 
-     
         case 'ascii2hex':
             return asciiToHex(param);
 
@@ -110,7 +100,7 @@ function processPlaceholder(placeholder, domain = 'example.com') {
             return generateRFCDate('IST');
 
         default:
-            return placeholder; 
+            return placeholder;
     }
 }
 
@@ -138,16 +128,13 @@ function generateMessageId(template, domain = 'example.com') {
         return `${year}${month}${day}${hours}${minutes}${seconds}`;
     });
 
-
     result = result.replace(/\[\[timestamp\]\]/gi, Math.floor(Date.now() / 1000).toString());
-
 
     const placeholderRegex = /\[\[([^\]]+)\]\]/g;
     result = result.replace(placeholderRegex, (match, placeholder) => {
         return processPlaceholder(placeholder, domain);
     });
 
- 
     result = result.trim();
     if (!result.startsWith('<')) {
         result = '<' + result;

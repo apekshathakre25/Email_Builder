@@ -1,9 +1,7 @@
-
 const { generateMessageId, validateMessageId } = require('./messageIdGenerator');
 
 console.log('🧪 Testing Message-ID Generator\n');
 console.log('='.repeat(80));
-
 
 const testCases = [
     {
@@ -58,7 +56,6 @@ const testCases = [
     }
 ];
 
-
 testCases.forEach((test, index) => {
     console.log(`\n${index + 1}. ${test.name}`);
     console.log('-'.repeat(80));
@@ -71,13 +68,11 @@ testCases.forEach((test, index) => {
     console.log(`Result:   ${result}`);
     console.log(`Valid:    ${isValid ? '✅ Yes' : '❌ No'}`);
 
-
     if (test.template.includes('{{Domain}}')) {
         const hasDomain = result.includes(test.domain);
         console.log(`Domain replaced: ${hasDomain ? '✅ Yes' : '❌ No'}`);
     }
 });
-
 
 console.log('\n\n' + '='.repeat(80));
 console.log('🔄 Testing Uniqueness (generating 5 Message-IDs from same template)');
@@ -91,7 +86,6 @@ for (let i = 0; i < 5; i++) {
     const id = generateMessageId(uniquenessTemplate, uniquenessDomain);
     generated.add(id);
     console.log(`${i + 1}. ${id}`);
-
 
     const start = Date.now();
     while (Date.now() - start < 10) { }

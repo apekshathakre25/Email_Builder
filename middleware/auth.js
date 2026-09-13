@@ -2,10 +2,7 @@ const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 const { CLEAR_COOKIE_OPTIONS } = require('../config/cookies');
 
-// Sourced from validated config. There is deliberately no fallback here: a
-// hardcoded default would let anyone forge a token if the env var went missing.
 const JWT_SECRET = env.jwtSecret;
-
 
 function authenticateToken(req, res, next) {
     const token = req.cookies.auth_token;
@@ -34,7 +31,6 @@ function authenticateToken(req, res, next) {
         console.error('[AUTH] Token verification failed:', err.message);
         res.clearCookie('auth_token', CLEAR_COOKIE_OPTIONS);
 
-
         if (req.path.startsWith('/api') || req.xhr || req.headers.accept?.includes('application/json')) {
             return res.status(401).json({
                 success: false,
@@ -46,7 +42,6 @@ function authenticateToken(req, res, next) {
         return res.redirect('/');
     }
 }
-
 
 function redirectIfAuthenticated(req, res, next) {
     const token = req.cookies.auth_token;

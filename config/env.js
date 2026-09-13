@@ -1,24 +1,12 @@
-/**
- * Centralised environment validation.
- *
- * Loaded once at process start (by app.js and the worker) so that a
- * misconfigured deployment fails immediately and loudly instead of running
- * with weak defaults. Nothing in this file falls back to a hardcoded secret.
- */
-
 require('dotenv').config({ quiet: true });
 
 const MIN_SECRET_LENGTH = 32;
-const KEY_HEX_LENGTH = 64; // 32 bytes, for AES-256
+const KEY_HEX_LENGTH = 64;
 
-/** Display name on outgoing login OTP mail, unless BREVO_SENDER_NAME overrides it. */
+
 const APP_NAME = 'Bulk Email Sender';
 
-/**
- * Free-mail domains cannot be SPF/DKIM-authenticated by a third party, so mail
- * Brevo sends "from" one of these lands with a DMARC alignment failure. Some of
- * them (yahoo.com, aol.com) publish p=reject, which means outright rejection.
- */
+
 const FREEMAIL_SENDER_DOMAINS = [
   'yahoo.com', 'yahoo.co.in', 'yahoo.co.uk',
   'gmail.com', 'googlemail.com',
@@ -31,7 +19,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const errors = [];
 const warnings = [];
 
-/** Values shipped in the repo as examples. Never acceptable in production. */
+
 const PLACEHOLDER_PATTERNS = [
   'your-super-secret',
   'change-this',
@@ -61,11 +49,7 @@ function required(name, { minLength = 0 } = {}) {
   return value;
 }
 
-/**
- * Secrets get the same length check everywhere, but placeholder values are only
- * fatal in production — that keeps a freshly cloned repo usable locally while
- * making it impossible to ship the example values.
- */
+
 function requiredSecret(name) {
   const value = required(name, { minLength: MIN_SECRET_LENGTH });
   if (!value) return undefined;
@@ -82,10 +66,7 @@ function requiredSecret(name) {
   return value;
 }
 
-/**
- * For secrets that are not currently consumed but must still be strong if
- * someone sets them. Absent is fine; weak or placeholder is not.
- */
+
 function optionalSecret(name) {
   const value = process.env[name];
   if (!value || !value.trim()) return undefined;
@@ -120,10 +101,7 @@ function requiredInProduction(name) {
   return value;
 }
 
-/**
- * Parses the login allowlist from "email:Name,other@x.com:Other Name".
- * Emails never contain a colon, so we split on the first one only.
- */
+
 function parseAuthorizedUsers(raw) {
   if (!raw || !raw.trim()) {
     errors.push('AUTHORIZED_USERS is required (format: "email:Name,email2:Name Two").');
@@ -173,7 +151,7 @@ function parseEncryptionKey(raw) {
   return Buffer.from(value, 'hex');
 }
 
-/** Like parsePositiveInt but permits 0, for counts such as proxy hops. */
+
 function parsePositiveIntOrZero(name, fallback) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
@@ -210,9 +188,9 @@ const env = {
 
   jwtSecret: requiredSecret('JWT_SECRET'),
 
-  // Not required: nothing consumes it today (auth is a JWT cookie and Passport
-  // runs with session:false). Kept so that adding express-session later doesn't
-  // need a config change, and so a weak value is still rejected.
+
+
+
   sessionSecret: optionalSecret('SESSION_SECRET'),
   credentialEncryptionKey: parseEncryptionKey(process.env.CREDENTIAL_ENCRYPTION_KEY),
 
@@ -220,18 +198,7 @@ const env = {
 
   appName: APP_NAME,
 
-  /**
-   * Login OTP delivery, via the Brevo HTTP API
-   * (POST https://api.brevo.com/v3/smtp/email).
-   *
-   * This replaced the Brevo SMTP relay, so SMTP_HOST / SMTP_PORT / SMTP_SECURE /
-   * SMTP_USER / SMTP_PASS are no longer read anywhere and can be dropped from
-   * the environment. Bulk sending is unaffected — it uses the SMTP credentials
-   * the operator supplies per request, never these values.
-   *
-   * The sender address stays in SMTP_FROM_EMAIL: it is the same field, and the
-   * bulk-send UI and docs already refer to it by that name.
-   */
+
   brevo: {
     apiKey: requiredInProduction('BREVO_API_KEY'),
     senderEmail: requiredInProduction('SMTP_FROM_EMAIL'),
@@ -251,25 +218,21 @@ const env = {
   maxRequestBodyBytes: parsePositiveInt('MAX_REQUEST_BODY_MB', 10) * 1024 * 1024,
   workerConcurrency: parsePositiveInt('WORKER_CONCURRENCY', 20),
 
-  /**
-   * Number of reverse proxies in front of the app. Must be accurate: too low and
-   * req.ip is the proxy's address (so rate limits apply to all users at once),
-   * too high and a client can spoof its IP via X-Forwarded-For.
-   */
+
   trustProxy: process.env.TRUST_PROXY === undefined
     ? (isProduction ? 1 : 0)
     : parsePositiveIntOrZero('TRUST_PROXY', isProduction ? 1 : 0)
 };
 
-// A cookie may only be marked Secure when traffic actually reaches us over TLS.
+
 env.cookieSecure = isProduction;
 
 if (isProduction && env.google.enabled && env.google.callbackUrl?.startsWith('http://')) {
   warnings.push('GOOGLE_CALLBACK_URL uses http:// in production; OAuth redirects should be https://.');
 }
 
-// A placeholder key would fail on every send with a 401 that looks like an
-// outage rather than a config mistake, so catch it here instead.
+
+
 if (env.brevo.apiKey && looksLikePlaceholder(env.brevo.apiKey)) {
   const message = 'BREVO_API_KEY still contains a placeholder value. Copy the real key from Brevo → SMTP & API → API keys.';
   if (isProduction) errors.push(message);

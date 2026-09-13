@@ -1,28 +1,10 @@
 'use strict';
 
-/**
- * Transactional email through the Brevo HTTP API.
- *
- * Replaces the Brevo SMTP relay that used to deliver login OTPs. One HTTPS
- * request per message means there is no SMTP handshake to wait on, no
- * connection to keep alive, and no SMTP username/password pair to store —
- * only an API key.
- *
- * The key is read from the validated config (BREVO_API_KEY). It is never
- * logged, never returned to a client, and stripped from any error text before
- * that text leaves this module.
- */
-
 const env = require('../config/env');
 
 const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
 const REQUEST_TIMEOUT_MS = 15000;
 
-/**
- * The deployment is misconfigured (no API key, no sender). Distinct from a send
- * failure so callers can say so plainly instead of reporting a transient error
- * or, worse, reporting success.
- */
 class BrevoConfigurationError extends Error {
   constructor(message) {
     super(message);
@@ -31,7 +13,6 @@ class BrevoConfigurationError extends Error {
   }
 }
 
-/** Brevo received the request and refused it, or was unreachable. */
 class BrevoApiError extends Error {
   constructor(message, { status, code } = {}) {
     super(message);
@@ -41,11 +22,6 @@ class BrevoApiError extends Error {
   }
 }
 
-/**
- * Last line of defence before any Brevo text is logged or returned. Brevo does
- * not echo the key back today, but error strings are provider-controlled input
- * and this module's output reaches both the logs and the HTTP response.
- */
 function redactSecrets(text) {
   if (text === undefined || text === null) return '';
 
@@ -78,7 +54,6 @@ function assertConfigured() {
   }
 }
 
-/** True when the API key and sender are both present. */
 function isConfigured() {
   try {
     assertConfigured();
@@ -89,11 +64,6 @@ function isConfigured() {
   }
 }
 
-/**
- * Pulls the most useful message out of a Brevo error body. Brevo replies with
- * { code, message } on failure, but returns HTML for some gateway errors, so
- * fall back to the status line rather than dumping a page into the log.
- */
 function describeFailure(status, statusText, body) {
   if (body && typeof body === 'object') {
     const parts = [];
@@ -107,19 +77,6 @@ function describeFailure(status, statusText, body) {
   return `Brevo API ${status}${statusText ? ` ${statusText}` : ''}`;
 }
 
-/**
- * Sends one transactional email.
- *
- * @param {object}  message
- * @param {string}  message.to       Recipient address.
- * @param {string} [message.toName]  Recipient display name.
- * @param {string}  message.subject
- * @param {string}  message.html     Rendered HTML body.
- * @param {string} [message.text]    Optional plain-text alternative.
- * @returns {Promise<{ messageId: string|undefined }>}
- * @throws {BrevoConfigurationError} Key or sender missing.
- * @throws {BrevoApiError}           Brevo rejected the message or was unreachable.
- */
 async function sendTransactionalEmail({ to, toName, subject, html, text } = {}) {
   assertConfigured();
 
@@ -141,8 +98,6 @@ async function sendTransactionalEmail({ to, toName, subject, html, text } = {}) 
     payload.textContent = text;
   }
 
-  // Node's fetch has no default timeout; without this a stalled connection
-  // would hold the request open until the client gives up.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -151,7 +106,7 @@ async function sendTransactionalEmail({ to, toName, subject, html, text } = {}) 
     response = await fetch(BREVO_ENDPOINT, {
       method: 'POST',
       headers: {
-        // Brevo authenticates on this header, not Authorization.
+
         'api-key': env.brevo.apiKey,
         accept: 'application/json',
         'content-type': 'application/json'

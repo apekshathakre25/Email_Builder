@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 
-
 const emailLogSchema = new mongoose.Schema({
   sessionId: {
     type: String,
@@ -114,23 +113,19 @@ const emailLogSchema = new mongoose.Schema({
   }
 });
 
-
 emailLogSchema.pre('save', function (next) {
   this.updatedAt = new Date();
   next();
 });
 
-
 emailLogSchema.virtual('totalProcessed').get(function () {
   return this.sentCount + this.failedCount;
 });
-
 
 emailLogSchema.virtual('completionPercentage').get(function () {
   if (this.totalRecipients === 0) return 0;
   return Math.round((this.totalProcessed / this.totalRecipients) * 100);
 });
-
 
 emailLogSchema.methods.addEntry = async function (email, status, error = null) {
 
@@ -141,9 +136,7 @@ emailLogSchema.methods.addEntry = async function (email, status, error = null) {
     if (error) this.lastError = error;
   }
 
-
   this.pendingCount = Math.max(0, this.totalRecipients - (this.sentCount + this.failedCount));
-
 
   if (this.pendingCount === 0) {
     this.status = 'completed';
@@ -152,7 +145,6 @@ emailLogSchema.methods.addEntry = async function (email, status, error = null) {
 
   return this.save();
 };
-
 
 emailLogSchema.statics.findLogsWithPagination = function (page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc') {
   const skip = (page - 1) * limit;
@@ -163,10 +155,9 @@ emailLogSchema.statics.findLogsWithPagination = function (page = 1, limit = 10, 
     .sort(sort)
     .skip(skip)
     .limit(limit)
-    .select('-entries') 
+    .select('-entries')
     .lean();
 };
-
 
 emailLogSchema.statics.getStatistics = function () {
   return this.aggregate([

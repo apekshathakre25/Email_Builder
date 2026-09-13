@@ -8,13 +8,11 @@ const logger = {
     }
   },
 
-
   info: (...args) => {
     if (!IS_PRODUCTION) {
       console.info(...args);
     }
   },
-
 
   debug: (...args) => {
     if (!IS_PRODUCTION) {
@@ -22,16 +20,13 @@ const logger = {
     }
   },
 
-
   warn: (...args) => {
     console.warn(...args);
   },
 
-
   error: (...args) => {
     console.error(...args);
   },
-
 
   force: (...args) => {
     console.log(...args);

@@ -6,16 +6,10 @@ const testEmailAccountSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    unique: true 
+    unique: true
   },
 
-  /**
-   * Stored encrypted (AES-256-GCM) via utils/credentialCipher — see the
-   * /imap/email-accounts and /imap/account-password routes. Never write a raw
-   * password to this field. `select: false` keeps it out of incidental queries
-   * so it is only ever loaded where it is explicitly needed.
-   */
-  password: {
+    password: {
     type: String,
     required: true,
     select: false

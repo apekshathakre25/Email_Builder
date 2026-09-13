@@ -3,13 +3,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await fetch('/check-auth', {
             method: 'GET',
-            credentials: 'include' 
+            credentials: 'include'
         });
 
         const data = await response.json();
 
         if (data.authenticated) {
-  
+
             console.log('[AUTH] User already authenticated, redirecting to interface');
             window.location.href = '/interface';
             return;
@@ -18,7 +18,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('[AUTH] Not authenticated or error checking auth:', error);
 
     }
-
 
     const urlParams = new URLSearchParams(window.location.search);
     const errorType = urlParams.get('error');
@@ -41,7 +40,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         showAlert(message, 'error');
 
-
         window.history.replaceState({}, document.title, window.location.pathname);
     }
 
@@ -51,7 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const otpInput = document.getElementById('otp');
     const sendOtpBtn = document.getElementById('sendOtpBtn');
 
-
     function showAlert(message, type = 'error') {
         const alertBox = document.getElementById('errorAlert');
         const alertMessage = document.getElementById('errorMessage');
@@ -59,7 +56,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         alertMessage.textContent = message;
 
-  
         if (type === 'success') {
             alertBox.className = 'alert alert-success';
             alertIcon.className = 'fas fa-check-circle';
@@ -70,12 +66,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         alertBox.style.display = 'flex';
 
-
         setTimeout(() => {
             alertBox.style.display = 'none';
         }, 5000);
     }
-
 
     sendOtpBtn.addEventListener('click', async () => {
         const email = emailSelect.value;
@@ -83,7 +77,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             showAlert('⚠️ Please select an account first');
             return;
         }
-
 
         sendOtpBtn.disabled = true;
         sendOtpBtn.classList.add('loading');
@@ -116,23 +109,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-
     emailSelect.addEventListener('change', () => {
         if (emailSelect.value) {
             otpInput.focus();
         }
     });
 
-
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-
 
         if (!emailSelect.value || !otpInput.value) {
             showAlert('⚠️ Please fill in all fields');
             return;
         }
-
 
         submitBtn.classList.add('loading');
         const btnText = submitBtn.querySelector('span');
@@ -157,7 +146,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const data = await response.json();
 
             if (data.success) {
- 
+
                 window.location.href = '/interface';
             } else {
 
@@ -174,7 +163,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             submitBtn.classList.remove('loading');
         }
     });
-
 
     document.addEventListener('mousemove', (e) => {
         const x = e.clientX / window.innerWidth;

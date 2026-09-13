@@ -11,7 +11,6 @@ const { sendTransactionalEmail } = require('../utils/brevoMailer');
 const { otpRequestLimiter, loginLimiter } = require('../middleware/rateLimit');
 const { COOKIE_OPTIONS, CLEAR_COOKIE_OPTIONS } = require('../config/cookies');
 
-
 const AUTHORIZED_USERS = env.authorizedUsers;
 
 const JWT_SECRET = env.jwtSecret;
@@ -89,8 +88,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
         logger.debug(`[OTP DEBUG] OTP for ${user.email} is: ${otp}`);
 
         try {
-            // Sender identity comes from config (BREVO_API_KEY / SMTP_FROM_EMAIL /
-            // BREVO_SENDER_NAME); nothing about it is set here.
+
             await sendTransactionalEmail({
                 to: user.email,
                 toName: user.name,
@@ -148,17 +146,17 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                                                 <p style="color: #e7f1ff; margin: 10px 0 0 0; font-size: 14px;">Secure Login Verification</p>
                                             </td>
                                         </tr>
-                                        
+
                                         <tr>
                                             <td class="content-padding" style="padding: 40px 30px;">
                                                 <h2 style="color: #343a40; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">
                                                     Hello ${user.name}! 👋
                                                 </h2>
-                                                
+
                                                 <p style="color: #6c757d; line-height: 1.6; margin: 0 0 25px 0; font-size: 15px;">
                                                     You've requested to log in to your Bulk Email Sender Interface. Please use the One-Time Password (OTP) below to complete your authentication:
                                                 </p>
-                                                
+
                                                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 30px 0;">
                                                     <tr>
                                                         <td align="center">
@@ -175,7 +173,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                                                         </td>
                                                     </tr>
                                                 </table>
-                                                
+
                                                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 6px; margin: 25px 0;">
                                                     <tr>
                                                         <td style="padding: 15px;">
@@ -185,13 +183,13 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                                                         </td>
                                                     </tr>
                                                 </table>
-                                                
+
                                                 <p style="color: #6c757d; line-height: 1.6; margin: 25px 0 0 0; font-size: 14px;">
                                                     If you didn't request this OTP, please ignore this email or contact +91 9307349162 if you have concerns about your account security.
                                                 </p>
                                             </td>
                                         </tr>
-                                        
+
                                         <tr>
                                             <td class="content-padding" style="background-color: #f8f9fa; padding: 25px 30px; border-top: 1px solid #dee2e6;">
                                                 <h3 style="color: #495057; margin: 0 0 15px 0; font-size: 16px; font-weight: 600;">
@@ -210,7 +208,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                                                 </table>
                                             </td>
                                         </tr>
-                                        
+
                                         <tr>
                                             <td style="background-color: #343a40; padding: 25px 30px; text-align: center;">
                                                 <p style="color: #adb5bd; margin: 0 0 10px 0; font-size: 13px;">
@@ -231,8 +229,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
             });
             console.log(`[OTP] Email sent successfully to ${user.email}`);
         } catch (emailError) {
-            // A missing key or sender is a deployment fault, not a transient one:
-            // report it as such instead of inviting the user to retry forever.
+
             if (emailError.isConfigurationError) {
                 console.error('[OTP] Email not sent, Brevo is not configured:', emailError.message);
 
@@ -242,7 +239,6 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                 });
             }
 
-            // Message is already stripped of key material by the Brevo client.
             console.error('[OTP] Email sending failed:', emailError.message);
 
             return res.status(502).json({
@@ -361,7 +357,6 @@ router.get('/check-auth', (req, res) => {
     }
 });
 
-
 router.get('/auth/google', (req, res, next) => {
     if (!env.google.enabled) {
         console.error('[AUTH] Google login attempted but credentials are missing');
@@ -383,13 +378,11 @@ router.get('/auth/google', (req, res, next) => {
         }
     }
 
-
     next();
 }, passport.authenticate('google', {
     scope: ['profile', 'email'],
-    session: false 
+    session: false
 }));
-
 
 router.get('/auth/google/callback',
     passport.authenticate('google', {
