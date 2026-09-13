@@ -1,7 +1,5 @@
-
 const mongoose = require('mongoose');
 const ImapTestResult = require('../models/ImapTestResult');
-
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/email-sender', {
     useNewUrlParser: true,
@@ -44,7 +42,6 @@ async function testFeature() {
         const created = await ImapTestResult.insertMany(testRecords);
         console.log(`✅ Created ${created.length} test records`);
 
-
         console.log('\n2. Simulating email send and Message-ID update...');
 
         for (const record of created) {
@@ -66,7 +63,6 @@ async function testFeature() {
             console.log(`✅ Updated ${updated.testEmail} with Message-ID: ${updated.messageId}`);
         }
 
-    
         console.log('\n3. Verifying saved records...');
 
         const savedRecords = await ImapTestResult.find({
@@ -102,5 +98,4 @@ async function testFeature() {
     }
 }
 
-// Run the test
 testFeature();

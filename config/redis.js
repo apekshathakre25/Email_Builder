@@ -13,7 +13,6 @@ function createRedisClient() {
 
     tls: isSecure ? {} : undefined,
 
-
     retryStrategy(times) {
       if (times > 30) {
         console.error(`❌ Redis: gave up reconnecting after ${times} attempts`);
@@ -35,7 +34,6 @@ function createRedisClient() {
 
     commandTimeout: 30000,
 
-
     enableOfflineQueue: true,
 
     maxRetriesPerRequest: null,
@@ -56,13 +54,6 @@ function createRedisClient() {
   return client;
 }
 
-/**
- * Process-wide shared connection, for callers that just need to run commands
- * (OTP store, rate limiter). Reuses one socket instead of opening a new
- * connection per module. Callers that need a dedicated connection — anything
- * issuing blocking commands or entering subscriber mode — should keep using
- * createRedisClient() directly.
- */
 let sharedClient = null;
 
 function getSharedRedisClient() {

@@ -1,7 +1,6 @@
-
 class SystemHealthMonitor {
     constructor() {
-        this.updateInterval = 10000; 
+        this.updateInterval = 10000;
         this.timeoutId = null;
         this.isMonitoring = false;
     }
@@ -52,7 +51,6 @@ class SystemHealthMonitor {
       </div>
     `;
 
-
         const placeholder = document.getElementById('system-health-placeholder');
         if (placeholder) {
             placeholder.appendChild(dashboard);
@@ -65,7 +63,7 @@ class SystemHealthMonitor {
 
     async fetchHealthData() {
         if (document.hidden) return;
-        
+
         try {
             const response = await fetch('/api/system-health');
             if (response.ok) {
@@ -84,7 +82,6 @@ class SystemHealthMonitor {
         cpuEl.textContent = cpuLoad.toFixed(1) + '%';
         cpuEl.className = 'health-value ' + this.getStatusClass(cpuLoad);
 
-
         const memPercent = parseFloat(data.memory.percentUsed);
         const memEl = document.getElementById('memory-compact');
         memEl.textContent = memPercent.toFixed(1) + '%';
@@ -99,12 +96,10 @@ class SystemHealthMonitor {
         queueEl.textContent = `${data.queue.active}/${data.queue.total}`;
         queueEl.className = 'health-value';
 
- 
         const networkSpeed = data.network.rx_sec + data.network.tx_sec;
         const networkEl = document.getElementById('network-compact');
         networkEl.textContent = this.formatBytes(networkSpeed) + '/s';
         networkEl.className = 'health-value';
-
 
         const uptimeEl = document.getElementById('uptime-compact');
         uptimeEl.textContent = data.system.uptime;
@@ -128,13 +123,13 @@ class SystemHealthMonitor {
     startMonitoring() {
         if (this.isMonitoring) return;
         this.isMonitoring = true;
-        
+
         const run = async () => {
             if (!this.isMonitoring) return;
             await this.fetchHealthData();
             this.timeoutId = setTimeout(run, this.updateInterval);
         };
-        
+
         run();
 
         document.addEventListener('visibilitychange', () => {

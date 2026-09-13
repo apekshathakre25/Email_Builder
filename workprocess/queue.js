@@ -13,7 +13,6 @@ if (!process.env.REDIS_URL) {
 const redisUrl = new URL(process.env.REDIS_URL);
 const isSecure = redisUrl.protocol === 'rediss:';
 
-
 const redisOptions = {
   host: redisUrl.hostname,
   port: Number(redisUrl.port),
@@ -31,7 +30,6 @@ const redisOptions = {
 };
 
 const emailQueue = new Queue('emailQueue', { redis: redisOptions });
-
 
 emailQueue.on('error', (err) => {
   console.error('❌ Bull Queue error:', err.message);

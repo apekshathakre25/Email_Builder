@@ -67,7 +67,6 @@ const imapTestResultSchema = new mongoose.Schema({
   }
 });
 
-
 imapTestResultSchema.index({ testType: 1, createdAt: -1 });
 imapTestResultSchema.index({ testEmail: 1, sentAt: -1 });
 imapTestResultSchema.index({ userId: 1, status: 1, createdAt: -1 });

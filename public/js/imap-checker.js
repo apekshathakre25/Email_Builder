@@ -1,4 +1,3 @@
-
 let imapCredentials = {
     host: '',
     port: 993,
@@ -6,17 +5,15 @@ let imapCredentials = {
 };
 
 let testEmailAccounts = [];
-let selectedEmails = []; 
+let selectedEmails = [];
 let autoImapTestEnabled = false;
-let currentTestType = 'manual'; 
-
+let currentTestType = 'manual';
 
 window._accountPasswordCache = {};
 
-
 async function loadImapData() {
     try {
-    
+
         const credsRes = await fetch('/imap/credentials');
         const credsData = await credsRes.json();
         if (credsData.success && credsData.credentials) {
@@ -29,27 +26,24 @@ async function loadImapData() {
             if (sslInput) sslInput.checked = imapCredentials.ssl !== false;
         }
 
- 
         await refreshEmailAccounts();
     } catch (err) {
         console.error('Failed to load IMAP data from DB:', err);
     }
 }
 
-
 async function refreshEmailAccounts() {
     try {
         const res = await fetch('/imap/email-accounts');
         const data = await res.json();
         if (data.success) {
-            testEmailAccounts = data.accounts; 
+            testEmailAccounts = data.accounts;
             renderEmailList();
         }
     } catch (err) {
         console.error('Failed to fetch email accounts:', err);
     }
 }
-
 
 document.getElementById('save-imap-credentials')?.addEventListener('click', async function () {
     const host = document.getElementById('imap-host').value.trim();
@@ -79,7 +73,6 @@ document.getElementById('save-imap-credentials')?.addEventListener('click', asyn
     }
 });
 
-
 document.getElementById('toggle-test-email-pass')?.addEventListener('click', function () {
     const passInput = document.getElementById('test-email-password');
     const eyeIcon = document.getElementById('test-email-pass-eye');
@@ -94,7 +87,6 @@ document.getElementById('toggle-test-email-pass')?.addEventListener('click', fun
         eyeIcon.classList.add('fa-eye');
     }
 });
-
 
 document.getElementById('add-test-email')?.addEventListener('click', async function () {
     const email = document.getElementById('test-email').value.trim();
@@ -123,7 +115,6 @@ document.getElementById('add-test-email')?.addEventListener('click', async funct
             return;
         }
 
-
         const emailInput = document.getElementById('test-email');
         const passInput = document.getElementById('test-email-password');
         if (emailInput) emailInput.value = '';
@@ -135,7 +126,6 @@ document.getElementById('add-test-email')?.addEventListener('click', async funct
         showError('❌ Failed to add email account: ' + err.message);
     }
 });
-
 
 function renderEmailList() {
     const listContainer = document.getElementById('test-emails-list');
@@ -156,8 +146,8 @@ function renderEmailList() {
       <tr class="${isSelected ? 'bg-zinc-50' : ''} border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors">
         <!-- <td class="p-4 border-r border-zinc-50">
           <div class="flex items-center justify-center">
-            <input type="checkbox" id="check-${accountId}" ${isSelected ? 'checked' : ''} 
-                   onchange="toggleSelectEmail('${account.email}')" 
+            <input type="checkbox" id="check-${accountId}" ${isSelected ? 'checked' : ''}
+                   onchange="toggleSelectEmail('${account.email}')"
                    class="w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 cursor-pointer" />
           </div>
         </td> -->
@@ -177,7 +167,7 @@ function renderEmailList() {
         </td>
         <td class="p-4 text-right">
           <div class="flex justify-end gap-2">
-            <button onclick="deleteEmail('${accountId}')" 
+            <button onclick="deleteEmail('${accountId}')"
                     class="h-8 w-8 inline-flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors border border-transparent hover:border-red-100"
                     title="Delete Account">
               <i class="fa-solid fa-trash-can"></i>
@@ -190,7 +180,6 @@ function renderEmailList() {
 
     listContainer.innerHTML = html;
 }
-
 
 async function getAccountPassword(accountId) {
     if (window._accountPasswordCache[accountId]) return window._accountPasswordCache[accountId];
@@ -210,13 +199,13 @@ async function getAccountPassword(accountId) {
 window.toggleAccountPassword = async function(accountId, btnEl) {
     const textEl = document.getElementById(`pass-text-${accountId}`);
     const iconEl = btnEl.querySelector('i');
-    
+
     if (!textEl || !iconEl) return;
-    
+
     const isHidden = textEl.textContent.includes('•');
-    
+
     if (isHidden) {
-  
+
         const password = await getAccountPassword(accountId);
         if (password) {
             textEl.textContent = password;
@@ -227,14 +216,13 @@ window.toggleAccountPassword = async function(accountId, btnEl) {
             showError('❌ Could not retrieve password');
         }
     } else {
- 
+
         textEl.textContent = '••••••••';
         textEl.classList.remove('tracking-normal');
         textEl.classList.add('tracking-widest');
         iconEl.classList.replace('fa-eye-slash', 'fa-eye');
     }
 };
-
 
 function toggleSelectEmail(email) {
     const index = selectedEmails.indexOf(email);
@@ -243,14 +231,12 @@ function toggleSelectEmail(email) {
         selectedEmails.splice(index, 1);
         showError(`✅ Deselected email: ${email}`);
 
-
     } else {
- 
+
         if (selectedEmails.length >= 5) {
             showError('⚠️ Maximum 5 email accounts can be selected at once');
             return;
         }
-
 
         if (selectedEmails.length > 0) {
             const selectedDomain = selectedEmails[0].split('@')[1];
@@ -261,7 +247,6 @@ function toggleSelectEmail(email) {
                 return;
             }
         }
-
 
         selectedEmails.push(email);
         showError(`✅ Selected email: ${email}`);
@@ -307,7 +292,6 @@ async function deleteEmail(id) {
     }
 }
 
-
 function updateCurrentEmailDisplay() {
     const display = document.getElementById('current-email-display');
     const text = document.getElementById('current-email-text');
@@ -321,7 +305,6 @@ function updateCurrentEmailDisplay() {
         }
     }
 }
-
 
 document.getElementById('check-both')?.addEventListener('click', async function () {
     if (selectedEmails.length === 0) {
@@ -366,7 +349,6 @@ document.getElementById('check-both')?.addEventListener('click', async function 
 
         const testIds = pendingResults.map(r => r.testId);
 
- 
         const checkPromises = selectedEmails.map(async (email) => {
             const account = testEmailAccounts.find(acc => acc.email === email);
             if (!account) {
@@ -417,13 +399,10 @@ document.getElementById('check-both')?.addEventListener('click', async function 
             }
         });
 
-
         const results = await Promise.all(checkPromises);
-
 
         const totalFound = results.reduce((sum, r) => sum + r.results.length, 0);
         const errors = results.filter(r => r.error).length;
-
 
         await loadTestResults();
 
@@ -446,11 +425,9 @@ document.getElementById('check-both')?.addEventListener('click', async function 
         button.style.cursor = 'pointer';
         button.innerHTML = originalHTML;
 
-
         await loadTestResults();
     }
 });
-
 
 function changeSpamPage(email, direction) {
     if (!window.spamPagination) {
@@ -472,12 +449,10 @@ function changeSpamPage(email, direction) {
 
     window.spamPagination[email] = newPage;
 
-   
     if (window.lastSpamResults) {
         renderSpamMailsMultiple(window.lastSpamResults);
     }
 }
-
 
 window.addEventListener('DOMContentLoaded', function () {
     loadImapData();
@@ -486,7 +461,6 @@ window.addEventListener('DOMContentLoaded', function () {
     setupTestResultsHandlers();
 });
 
-
 function setupAutoImapTestToggle() {
     const bulkRadio = document.getElementById('bulk');
     const testRadio = document.getElementById('test');
@@ -494,7 +468,6 @@ function setupAutoImapTestToggle() {
 
     if (!bulkRadio || !testRadio || !autoImapCheckbox) return;
 
-    // Enable/disable checkbox based on mode
     function updateCheckboxState() {
         if (testRadio.checked) {
             autoImapCheckbox.disabled = false;
@@ -519,7 +492,6 @@ function setupAutoImapTestToggle() {
                 return;
             }
 
-
             if (!imapCredentials.host) {
                 showError('⚠️ Please configure IMAP credentials first');
                 this.checked = false;
@@ -527,7 +499,6 @@ function setupAutoImapTestToggle() {
                 return;
             }
 
-  
             const testRecpField = document.getElementById('test-recp');
             const testRecipients = testRecpField ? testRecpField.value.trim() : '';
 
@@ -537,7 +508,6 @@ function setupAutoImapTestToggle() {
                 autoImapTestEnabled = false;
                 return;
             }
-
 
             const recipients = testRecipients.split(/[,\n]/).map(e => e.trim()).filter(e => e);
             const missingAccounts = recipients.filter(r => !testEmailAccounts.some(acc => acc.email === r));
@@ -561,7 +531,6 @@ function setupAutoImapTestToggle() {
 
     updateCheckboxState();
 }
-
 
 function setupTestModeToggle() {
     const testRadio = document.getElementById('test');
@@ -587,7 +556,6 @@ function setupTestModeToggle() {
         });
     }
 }
-
 
 function updateTestModeIndicator() {
     const indicator = document.getElementById('test-mode-indicator');
@@ -644,10 +612,8 @@ function setupTestResultsHandlers() {
         });
     }
 
-
     loadTestResults();
 }
-
 
 async function loadTestResults() {
     try {
@@ -662,7 +628,6 @@ async function loadTestResults() {
         console.error('Error loading test results:', error);
     }
 }
-
 
 function renderTestResults(results) {
     const tbody = document.getElementById('test-results-body');
@@ -694,9 +659,7 @@ function renderTestResults(results) {
 
         const statusText = result.status.charAt(0).toUpperCase() + result.status.slice(1).replace('_', ' ');
 
-
         const displayEmail = result.testEmail.length > 25 ? result.testEmail.substring(0, 22) + '...' : result.testEmail;
-
 
         const displayIP = result.ipAddress.length > 15 ? result.ipAddress.substring(0, 12) + '...' : result.ipAddress;
 
@@ -745,7 +708,6 @@ function renderTestResults(results) {
     tbody.innerHTML = html;
 }
 
-
 async function showEmailDetails(testId) {
     try {
         const response = await fetch(`/imap/test-results?limit=100`);
@@ -782,24 +744,24 @@ async function showEmailDetails(testId) {
                         <h3 style="margin: 0; color: #343a40;">
                             <i class="fa-solid fa-envelope-open-text"></i> Email Test Details
                         </h3>
-                        <button onclick="this.closest('div[style*=fixed]').remove()" 
+                        <button onclick="this.closest('div[style*=fixed]').remove()"
                                 style="background: #dc3545; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 1em;">
                             <i class="fa-solid fa-times"></i>
                         </button>
                     </div>
-                    
+
                     <!-- Tabs -->
                     <div style="display: flex; border-bottom: 1px solid #dee2e6; background: #f8f9fa; padding: 0 20px;">
-                        <button onclick="switchTab(event, 'details-tab')" class="tab-button active" 
+                        <button onclick="switchTab(event, 'details-tab')" class="tab-button active"
                                 style="padding: 12px 20px; border: none; background: white; border-bottom: 3px solid #007bff; cursor: pointer; font-weight: 600; color: #007bff; margin-right: 5px;">
                             <i class="fa-solid fa-info-circle"></i> Details
                         </button>
-                        <button onclick="switchTab(event, 'raw-tab')" class="tab-button" 
+                        <button onclick="switchTab(event, 'raw-tab')" class="tab-button"
                                 style="padding: 12px 20px; border: none; background: transparent; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; color: #666;">
                             <i class="fa-solid fa-code"></i> Raw Email
                         </button>
                     </div>
-                    
+
                     <div style="flex: 1; overflow-y: auto; padding: 20px;">
                         <!-- Details Tab -->
                         <div id="details-tab" class="tab-content" style="display: block;">
@@ -812,19 +774,19 @@ async function showEmailDetails(testId) {
                                     </div>
                                 </div>
                                 ` : ''}
-                                
+
                                 <div>
                                     <strong style="color: #495057;">Test Email:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px;">${result.testEmail}</div>
                                 </div>
-                                
+
                                 <div>
                                     <strong style="color: #495057;">IP Address:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
                                         <code>${result.ipAddress}</code>
                                     </div>
                                 </div>
-                                
+
                                 <div>
                                     <strong style="color: #495057;">Status:</strong>
                                     <div style="margin-top: 5px;">
@@ -833,33 +795,33 @@ async function showEmailDetails(testId) {
                                         </span>
                                     </div>
                                 </div>
-                                
+
                                 ${result.subject ? `
                                 <div>
                                     <strong style="color: #495057;">Subject:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px;">${result.subject}</div>
                                 </div>
                                 ` : ''}
-                                
+
                                 ${result.fromEmail ? `
                                 <div>
                                     <strong style="color: #495057;">From:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px;">${result.fromEmail}</div>
                                 </div>
                                 ` : ''}
-                                
+
                                 <div>
                                     <strong style="color: #495057;">Sent At:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px;">${new Date(result.sentAt).toLocaleString()}</div>
                                 </div>
-                                
+
                                 ${result.checkedAt ? `
                                 <div>
                                     <strong style="color: #495057;">Checked At:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px;">${new Date(result.checkedAt).toLocaleString()}</div>
                                 </div>
                                 ` : ''}
-                                
+
                                 ${result.emailDetails?.preview ? `
                                 <div>
                                     <strong style="color: #495057;">Preview:</strong>
@@ -868,7 +830,7 @@ async function showEmailDetails(testId) {
                                     </div>
                                 </div>
                                 ` : ''}
-                                
+
                                 <div>
                                     <strong style="color: #495057;">Test Type:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
@@ -877,7 +839,7 @@ async function showEmailDetails(testId) {
                                         </span>
                                     </div>
                                 </div>
-                                
+
                                 <div>
                                     <strong style="color: #495057;">Test ID:</strong>
                                     <div style="margin-top: 5px; padding: 10px; background: #f8f9fa; border-radius: 4px; font-family: monospace; font-size: 0.85em; word-break: break-all;">
@@ -886,7 +848,7 @@ async function showEmailDetails(testId) {
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Raw Email Tab -->
                         <div id="raw-tab" class="tab-content" style="display: none;">
                             ${result.emailDetails?.fullRaw ? `
@@ -910,12 +872,10 @@ async function showEmailDetails(testId) {
 
             document.body.appendChild(popup);
 
-
             window.switchTab = function (event, tabId) {
 
                 const tabContents = popup.querySelectorAll('.tab-content');
                 tabContents.forEach(content => content.style.display = 'none');
-
 
                 const tabButtons = popup.querySelectorAll('.tab-button');
                 tabButtons.forEach(button => {
@@ -924,9 +884,7 @@ async function showEmailDetails(testId) {
                     button.style.color = '#666';
                 });
 
-
                 document.getElementById(tabId).style.display = 'block';
-
 
                 event.currentTarget.style.background = 'white';
                 event.currentTarget.style.borderBottom = '3px solid #007bff';
@@ -938,7 +896,6 @@ async function showEmailDetails(testId) {
         showError('❌ Failed to load email details');
     }
 }
-
 
 async function deleteTestResult(testId) {
     if (!confirm('Are you sure you want to delete this test result?')) {
@@ -964,7 +921,6 @@ async function deleteTestResult(testId) {
     }
 }
 
-
 window.handleAutoImapTest = async function (testRecipients, smtpHost, subject, fromEmail, backendTestIds) {
     if (!autoImapTestEnabled) return;
 
@@ -983,13 +939,11 @@ window.handleAutoImapTest = async function (testRecipients, smtpHost, subject, f
             }
         }
 
-
         const missingAccounts = testRecipients.filter(r => !matchedAccounts.includes(r));
         if (missingAccounts.length > 0) {
             showError(`⚠️ Please add test email accounts for: ${missingAccounts.join(', ')}`);
 
         }
-
 
         selectedEmails = [...matchedAccounts];
         renderEmailList();
@@ -997,9 +951,7 @@ window.handleAutoImapTest = async function (testRecipients, smtpHost, subject, f
 
         showError(`✅ Test emails logged (IDs: ${backendTestIds.length}). Auto-checking IMAP in 10 seconds...`);
 
-
         await loadTestResults();
-
 
         const checkBothBtn = document.getElementById('check-both');
         if (checkBothBtn) {
@@ -1008,7 +960,6 @@ window.handleAutoImapTest = async function (testRecipients, smtpHost, subject, f
             checkBothBtn.style.cursor = 'not-allowed';
             checkBothBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Auto-Checking...';
         }
-
 
         setTimeout(async () => {
 
@@ -1020,7 +971,6 @@ window.handleAutoImapTest = async function (testRecipients, smtpHost, subject, f
         console.error('Error handling auto IMAP test:', error);
         showError('❌ Failed to setup auto IMAP test');
 
-
         const checkBothBtn = document.getElementById('check-both');
         if (checkBothBtn) {
             checkBothBtn.disabled = false;
@@ -1030,7 +980,6 @@ window.handleAutoImapTest = async function (testRecipients, smtpHost, subject, f
         }
     }
 };
-
 
 async function checkAutoTestStatus(testIds) {
     if (selectedEmails.length === 0) {
@@ -1102,9 +1051,7 @@ async function checkAutoTestStatus(testIds) {
             }
         }
 
-
         await loadTestResults();
-
 
         if (totalErrors === 0) {
             showError(`✅ Auto IMAP check completed: Found and updated ${totalChecked} test email(s)`);

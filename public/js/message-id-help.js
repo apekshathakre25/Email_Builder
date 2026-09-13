@@ -1,4 +1,3 @@
-
 function createMessageIdModal() {
   const modalHTML = `
     <div id="message-id-modal" class="modal" style="display: none;" role="dialog" aria-modal="true"
@@ -96,10 +95,8 @@ function createMessageIdModal() {
     </div>
   `;
 
-
   document.body.insertAdjacentHTML('beforeend', modalHTML);
 }
-
 
 function initMessageIdHelp() {
 
@@ -114,24 +111,21 @@ function initMessageIdHelp() {
     messageIdHelpBtn.addEventListener('click', (e) => {
       e.preventDefault();
       messageIdModal.style.display = 'block';
-      document.body.style.overflow = 'hidden'; 
+      document.body.style.overflow = 'hidden';
     });
-
 
     const closeModal = () => {
       messageIdModal.style.display = 'none';
-      document.body.style.overflow = ''; 
+      document.body.style.overflow = '';
     };
 
     closeModalBtn.addEventListener('click', closeModal);
-
 
     messageIdModal.addEventListener('click', (e) => {
       if (e.target === messageIdModal) {
         closeModal();
       }
     });
-
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && messageIdModal.style.display === 'block') {

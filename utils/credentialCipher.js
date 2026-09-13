@@ -1,26 +1,11 @@
-/**
- * Reversible encryption for third-party credentials we are obliged to store
- * (IMAP app passwords, which must be replayed to the mail server verbatim and
- * therefore cannot be hashed).
- *
- * AES-256-GCM gives us confidentiality plus an authentication tag, so tampering
- * with a stored value is detected on read rather than silently producing junk.
- *
- * Stored format:  enc:v1:<iv>:<authTag>:<ciphertext>   (all base64url)
- *
- * The `enc:v1:` prefix lets decrypt() recognise its own output, which keeps
- * rows written before encryption was introduced readable instead of throwing.
- */
-
 const crypto = require('crypto');
 const env = require('../config/env');
 
 const ALGORITHM = 'aes-256-gcm';
 const PREFIX = 'enc:v1';
-const IV_LENGTH = 12; // 96 bits, the recommended nonce size for GCM
+const IV_LENGTH = 12;
 const KEY = env.credentialEncryptionKey;
 
-/** True when the value was produced by encrypt() in this format. */
 function isEncrypted(value) {
   return typeof value === 'string' && value.startsWith(`${PREFIX}:`);
 }
@@ -51,10 +36,6 @@ function encrypt(plaintext) {
   ].join(':');
 }
 
-/**
- * Returns the plaintext. Values that predate encryption are passed through
- * unchanged so existing records keep working; re-saving them stores ciphertext.
- */
 function decrypt(stored) {
   if (stored === undefined || stored === null || stored === '') {
     return stored;
@@ -82,10 +63,6 @@ function decrypt(stored) {
   ]).toString('utf8');
 }
 
-/**
- * Decrypts without throwing — for list endpoints where one unreadable row
- * (say, after a key rotation) shouldn't fail the whole request.
- */
 function tryDecrypt(stored) {
   try {
     return { ok: true, value: decrypt(stored) };

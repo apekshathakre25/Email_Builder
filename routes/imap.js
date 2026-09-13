@@ -6,7 +6,6 @@ const ImapTestResult = require('../models/ImapTestResult');
 const { TestEmailAccount, ImapCredentials } = require('../models/TestEmailAccount');
 const { encrypt, tryDecrypt } = require('../utils/credentialCipher');
 
-
 router.post('/check-inbox', async (req, res) => {
     const { host, port, ssl, email, password } = req.body;
 
@@ -29,9 +28,7 @@ router.post('/check-inbox', async (req, res) => {
             logger: false
         });
 
-
         await client.connect();
-
 
         let lock = await client.getMailboxLock('INBOX');
 
@@ -39,12 +36,10 @@ router.post('/check-inbox', async (req, res) => {
 
             const messages = [];
 
- 
             const mailbox = client.mailbox;
             if (mailbox.exists === 0) {
                 return res.json({ emails: [] });
             }
-
 
             const count = Math.min(20, mailbox.exists);
             const start = Math.max(1, mailbox.exists - count + 1);
@@ -301,7 +296,7 @@ router.post('/email-accounts', async (req, res) => {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return res.status(400).json({ error: 'Invalid email address' });
         }
-        // Encrypted at rest — never persist the app password in cleartext.
+
         const account = await TestEmailAccount.findOneAndUpdate(
             { email: email.toLowerCase().trim() },
             {
@@ -338,7 +333,6 @@ router.get('/account-password/:id', async (req, res) => {
     try {
         if (!req.user?.email) return res.status(401).json({ error: 'Authentication required' });
 
-        // password is select:false on the schema, so ask for it explicitly.
         const account = await TestEmailAccount.findOne({ _id: req.params.id }).select('+password');
         if (!account) return res.status(404).json({ error: 'Account not found' });
 
@@ -527,7 +521,7 @@ router.post('/check-auto-test', async (req, res) => {
                                 }
                             }
 
-                            if (!isMatch && testResult.messageId && testResult.messageId.startsWith('pending-')) {
+                            if (!isMatch) {
                                 const isRecipient = parsed.to?.value?.some(addr =>
                                     addr.address?.toLowerCase() === testResult.testEmail.toLowerCase()
                                 );
@@ -622,7 +616,7 @@ router.post('/check-auto-test', async (req, res) => {
                                         }
                                     }
 
-                                    if (!isMatch && testResult.messageId && testResult.messageId.startsWith('pending-')) {
+                                    if (!isMatch) {
                                         const isRecipient = parsed.to?.value?.some(addr =>
                                             addr.address?.toLowerCase() === testResult.testEmail.toLowerCase()
                                         );

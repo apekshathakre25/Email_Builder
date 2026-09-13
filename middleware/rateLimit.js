@@ -1,11 +1,3 @@
-/**
- * Rate limiters.
- *
- * Counters live in Redis rather than process memory so the limits hold across
- * all PM2 workers — an in-memory store would let a caller get N times the
- * allowance by spreading requests over N instances.
- */
-
 const rateLimit = require('express-rate-limit');
 const { RedisStore } = require('rate-limit-redis');
 const { getSharedRedisClient } = require('../config/redis');
@@ -16,8 +8,7 @@ function redisStore(prefix) {
 
   return new RedisStore({
     prefix,
-    // node-redis style call signature expected by rate-limit-redis, mapped
-    // onto ioredis.
+
     sendCommand: (...args) => client.call(...args)
   });
 }
@@ -26,11 +17,6 @@ const jsonHandler = (message) => (req, res) => {
   res.status(429).json({ success: false, message });
 };
 
-/**
- * OTP requests. Deliberately tight: each request sends a real email, so this is
- * both a brute-force guard and protection against using us to spam an inbox.
- * Keyed on the target email when present, otherwise the client IP.
- */
 const otpRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,

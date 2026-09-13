@@ -73,18 +73,15 @@ const uploadedFileSchema = new mongoose.Schema({
   }
 });
 
-
 uploadedFileSchema.virtual('completionPercentage').get(function () {
   if (this.validEmails === 0) return 0;
   return Math.round(((this.sentEmails + this.failedEmails) / this.validEmails) * 100);
 });
 
-
 uploadedFileSchema.virtual('successRate').get(function () {
   if (this.sentEmails + this.failedEmails === 0) return 0;
   return Math.round((this.sentEmails / (this.sentEmails + this.failedEmails)) * 100);
 });
-
 
 uploadedFileSchema.statics.findFilesWithPagination = function (page = 1, limit = 10, sortBy = 'uploadDate', sortOrder = 'desc') {
   const skip = (page - 1) * limit;
@@ -97,7 +94,6 @@ uploadedFileSchema.statics.findFilesWithPagination = function (page = 1, limit =
     .limit(limit)
     .lean();
 };
-
 
 uploadedFileSchema.statics.getFileStatistics = function () {
   return this.aggregate([
