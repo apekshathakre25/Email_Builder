@@ -201,12 +201,202 @@ const replaceTemplateVars = (str, data) => {
     .replace(TEMPLATE_PATTERNS.rfcDate, rfcDate);
 };
 
+/**
+ * Campaign configuration lookup for compact Bull jobs.
+ *
+ * TWO job formats are supported, distinguished solely by `campaignRef`:
+ *
+ *   FORMAT 1 (legacy, in use today) — every campaign field is inlined on the job:
+ *     { smtp, email, from, subject, message, isHtml, headers, templateData,
+ *       messageIdTemplate, senderDomain, logKey, sessionId, originalSessionId }
+ *     Passed straight through unchanged and unvalidated, so existing jobs already
+ *     sitting in Redis behave exactly as before.
+ *
+ *   FORMAT 2 (compact, not yet produced) — only recipient-specific data on the job:
+ *     { campaignRef, email, sessionId, originalSessionId }
+ *     Shared campaign data is read once from Redis instead of being duplicated
+ *     ~5KB per recipient.
+ *
+ * CONTRACT for the future producer (nothing writes this yet):
+ *
+ *   key   : campaign:<campaignRef>          (Redis STRING, JSON encoded)
+ *   value : {
+ *             smtp:              { host, port, secure, auth: { user, pass } },
+ *             from:              string,
+ *             subject:           string,
+ *             message:           string,     // may be a large HTML body
+ *             isHtml:            boolean,
+ *             headers:           object,     // raw header templates
+ *             messageIdTemplate: string|null,
+ *             senderDomain:      string,
+ *             logKey:            string,     // e.g. emaillog:<sessionId>
+ *             templateData:      { fromName, subjectLine, fromEmail }
+ *           }
+ *
+ *   smtp, from, subject, message and logKey are required. `templateData` MUST NOT
+ *   carry toEmail: that is recipient-specific and is always taken from job.data.email,
+ *   so a stale value in the config cannot leak into another recipient's email.
+ *
+ *   The producer owns the key's lifetime (write before enqueue, TTL longer than the
+ *   campaign). The worker only reads.
+ */
+const CAMPAIGN_CONFIG_KEY_PREFIX = 'campaign:';
+
+// Bounded deliberately: a cached config can hold a multi-megabyte HTML body, so an
+// unbounded cache would be a slow leak in a long-lived worker. A worker realistically
+// serves one or two campaigns at a time; the TTL also releases bodies once a campaign
+// goes quiet.
+const CAMPAIGN_CONFIG_CACHE_MAX_ENTRIES = 8;
+const CAMPAIGN_CONFIG_CACHE_TTL_MS = 60000;
+
+const campaignConfigCache = new Map();
+const campaignConfigInFlight = new Map();
+
+function campaignConfigKey(campaignRef) {
+  return `${CAMPAIGN_CONFIG_KEY_PREFIX}${campaignRef}`;
+}
+
+async function readCampaignConfig(campaignRef) {
+  const key = campaignConfigKey(campaignRef);
+  const raw = await client.get(key);
+
+  // Absent key. Returned as null so the caller can fail the job with a precise
+  // message; never substituted with another campaign's data.
+  if (!raw) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Campaign config at ${key} is not valid JSON: ${err.message}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Campaign config at ${key} is not a JSON object`);
+  }
+
+  return parsed;
+}
+
+async function getCampaignConfig(campaignRef) {
+  const cached = campaignConfigCache.get(campaignRef);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return cached.config;
+    campaignConfigCache.delete(campaignRef);
+  }
+
+  // Collapse the stampede. With CONCURRENCY job slots a cold cache would otherwise
+  // issue one GET of the full body per in-flight job at the start of every campaign.
+  const inFlight = campaignConfigInFlight.get(campaignRef);
+  if (inFlight) return inFlight;
+
+  const pending = readCampaignConfig(campaignRef);
+  campaignConfigInFlight.set(campaignRef, pending);
+
+  try {
+    const config = await pending;
+
+    // A missing config is not cached: it may simply not have been written yet during
+    // a rolling deploy, and caching the absence would fail jobs that would now succeed.
+    if (config) {
+      if (campaignConfigCache.size >= CAMPAIGN_CONFIG_CACHE_MAX_ENTRIES) {
+        // Map preserves insertion order, so the first key is the oldest.
+        campaignConfigCache.delete(campaignConfigCache.keys().next().value);
+      }
+      campaignConfigCache.set(campaignRef, {
+        config,
+        expiresAt: Date.now() + CAMPAIGN_CONFIG_CACHE_TTL_MS
+      });
+    }
+
+    return config;
+  } finally {
+    campaignConfigInFlight.delete(campaignRef);
+  }
+}
+
+function assertSendableCampaignConfig(config, campaignRef, jobId) {
+  const missing = [];
+
+  if (!config.smtp || typeof config.smtp !== 'object') missing.push('smtp');
+  if (typeof config.from !== 'string') missing.push('from');
+  if (typeof config.subject !== 'string') missing.push('subject');
+  if (typeof config.message !== 'string') missing.push('message');
+  if (typeof config.logKey !== 'string' || !config.logKey) missing.push('logKey');
+
+  if (missing.length) {
+    throw new Error(
+      `Campaign config at ${campaignConfigKey(campaignRef)} has missing or invalid ` +
+      `field(s): ${missing.join(', ')} — refusing to send job ${jobId} rather than ` +
+      'delivering an incomplete email'
+    );
+  }
+}
+
+/**
+ * Resolves the campaign-level payload for a job, whichever format it uses.
+ *
+ * Throws for any compact job that cannot be resolved, so the caller's existing catch
+ * records the failure and rethrows, letting Bull fail the job under its normal
+ * attempts/removeOnFail settings. It never falls back to inline job fields or to
+ * another campaign.
+ */
+async function resolveJobPayload(job) {
+  const data = job.data || {};
+  const campaignRef = typeof data.campaignRef === 'string' ? data.campaignRef.trim() : '';
+
+  // FORMAT 1 — legacy. Returned as-is, no validation, no copying.
+  if (!campaignRef) return data;
+
+  // FORMAT 2 — compact.
+  if (typeof data.email !== 'string' || !data.email) {
+    throw new Error(`Malformed compact job ${job.id}: campaignRef is set but recipient email is missing`);
+  }
+
+  const config = await getCampaignConfig(campaignRef);
+  if (!config) {
+    throw new Error(
+      `Campaign config not found at ${campaignConfigKey(campaignRef)} for job ${job.id} ` +
+      '— refusing to send'
+    );
+  }
+
+  assertSendableCampaignConfig(config, campaignRef, job.id);
+
+  // Field references only. `message` is not copied; JS strings are immutable and
+  // shared, so the cached body is never duplicated per job.
+  return {
+    smtp: config.smtp,
+    from: config.from,
+    subject: config.subject,
+    message: config.message,
+    isHtml: config.isHtml,
+    headers: config.headers,
+    messageIdTemplate: config.messageIdTemplate,
+    senderDomain: config.senderDomain,
+    logKey: config.logKey,
+    // toEmail is per-recipient and is always the job's own address, listed last so it
+    // wins even if a config were written with a stale toEmail in it.
+    templateData: { ...(config.templateData || {}), toEmail: data.email }
+  };
+}
+
 emailQueue.process(CONCURRENCY, async (job) => {
   log(`Processing job ${job.id} for email: ${job.data.email}`);
 
-  const { smtp, email, from, subject, message, isHtml, headers, templateData, logKey, sessionId, messageIdTemplate, senderDomain } = job.data;
+  const { email, sessionId } = job.data;
+
+  // The catch below logs to logKey. Legacy jobs carry it inline; for compact jobs it
+  // lives in the campaign config, which may itself be what failed to load. Seed from
+  // the job, then upgrade once the payload resolves.
+  let logKey = job.data.logKey;
 
   try {
+
+    const payload = await resolveJobPayload(job);
+    logKey = payload.logKey;
+
+    const { smtp, from, subject, message, isHtml, headers, templateData, messageIdTemplate, senderDomain } = payload;
 
     const transporter = getTransporter(smtp);
 
@@ -307,7 +497,12 @@ emailQueue.process(CONCURRENCY, async (job) => {
       batchLogger.addLog(sessionId, 'failed', email, err.message, originalSessionId);
     }
 
-    await client.rpush(logKey, JSON.stringify({ email, status: 'failed', error: err.message, time: Date.now() }));
+    // Guarded: a compact job whose campaign config could not be resolved has no
+    // logKey, and RPUSH-ing to undefined would create a literal "undefined" key in
+    // Redis. Legacy jobs always carry a logKey, so this is a no-op for them.
+    if (logKey) {
+      await client.rpush(logKey, JSON.stringify({ email, status: 'failed', error: err.message, time: Date.now() }));
+    }
     throw err;
   }
 });
