@@ -96,6 +96,71 @@ async function getRecipients(sessionId) {
   }
 }
 
+function positiveCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+}
+
+/**
+ * O(1) recipient count for the stored list.
+ *
+ * LLEN is O(1) in Redis; LRANGE key 0 -1 is O(n) and also materialises every
+ * address in the Node heap. Only the length is needed here.
+ */
+async function getRecipientCountFromRedis(sessionId) {
+  const key = `recipients:${sessionId}`;
+
+  try {
+    return await redisClient.llen(key);
+  } catch (err) {
+    // Older campaigns stored the list as a single JSON string, which makes LLEN
+    // reject with WRONGTYPE. Fall back to the same shape getRecipients() already
+    // understands rather than failing the poll.
+    if (err && typeof err.message === 'string' && err.message.includes('WRONGTYPE')) {
+      const data = await redisClient.get(key);
+      try {
+        const parsed = data ? JSON.parse(data) : null;
+        return Array.isArray(parsed) ? parsed.length : 0;
+      } catch {
+        return 0;
+      }
+    }
+    throw err;
+  }
+}
+
+/**
+ * Total recipients for progress reporting, resolved without reading the list.
+ *
+ * /status is polled once per second per client while a campaign runs, so this
+ * path must stay O(1). Reading the whole list to take its length cost ~600ms of
+ * Redis blocking and ~150MB of allocation per poll at 1M recipients, which
+ * starved the workers and the rate limiter of the same single-threaded Redis.
+ *
+ * Resolution order:
+ *   1. EmailLog.totalRecipients — the campaign's deduplicated total across every
+ *      selected file. This is what makes multi-file campaigns correct: the Redis
+ *      list under `sessionId` only ever holds the FIRST selected file, so its
+ *      length under-reports a multi-file campaign.
+ *   2. UploadedFile.validEmails — persisted at upload time; used when a file has
+ *      been uploaded but no campaign record exists yet.
+ *   3. Redis LLEN — O(1) equivalent of the previous LRANGE(...).length.
+ */
+async function getRecipientCount(sessionId, emailLog = null) {
+  const campaignTotal = positiveCount(emailLog && emailLog.totalRecipients);
+  if (campaignTotal !== null) return campaignTotal;
+
+  try {
+    const file = await UploadedFile.findOne({ sessionId }, 'validEmails').lean();
+    const fileTotal = positiveCount(file && file.validEmails);
+    if (fileTotal !== null) return fileTotal;
+  } catch (err) {
+    logger.debug(`getRecipientCount: UploadedFile lookup failed for ${sessionId}: ${err.message}`);
+  }
+
+  return getRecipientCountFromRedis(sessionId);
+}
+
 async function getSentIndex(sessionId) {
   const idx = await redisClient.get(`sentIndex:${sessionId}`);
   return idx ? parseInt(idx) : 0;
@@ -206,8 +271,10 @@ router.post('/recipients', upload.single('file'), async (req, res) => {
     await storeRecipients(sessionId, validRecipients);
 
     res.json({
+      // The full validRecipients array used to be echoed back here. Nothing reads
+      // it — views/file-upload.ejs only checks res.ok and then reloads /files — and
+      // at 1M addresses it was a ~28MB response body serialised on the event loop.
       total: validRecipients.length,
-      validRecipients,
       sessionId,
       fileInfo: {
         originalName: file.originalname,
@@ -501,8 +568,32 @@ router.post('/send-email', async (req, res) => {
     setImmediate(async () => {
       try {
         const senderDomain = fromEmail.split('@')[1] || 'example.com';
+
+        // Index req.recipientSourceMap by email once, instead of running an
+        // Array#find per recipient inside the map below. The find made this loop
+        // O(n²): ~4s at 40k recipients and ~41min extrapolated at 1M, all of it a
+        // single synchronous block that froze this web instance outright.
+        //
+        // Semantics are unchanged. Entries are keyed on the raw item.email, the
+        // same value the previous `r.email === email` compared, so no case or
+        // whitespace normalisation is introduced. The has() guard keeps Array#find's
+        // first-match-wins behaviour; recipientSourceMap is already deduplicated by
+        // email upstream, so this only matters if that ever changes.
+        const recipientSourceMapByEmail = new Map();
+        if (req.recipientSourceMap) {
+          for (const item of req.recipientSourceMap) {
+            // Keyed on item.email as-is, including falsy values, so a lookup for a
+            // falsy email resolves the same entry Array#find would have returned.
+            if (item && !recipientSourceMapByEmail.has(item.email)) {
+              recipientSourceMapByEmail.set(item.email, item);
+            }
+          }
+        }
+
         const jobs = batch.map(email => {
-          const sourceMap = req.recipientSourceMap ? req.recipientSourceMap.find(r => r.email === email) : null;
+          // Absent map, or an email with no entry, both yield undefined here, which
+          // is falsy exactly as the previous null / find-miss was.
+          const sourceMap = recipientSourceMapByEmail.get(email);
           const originalSessionId = sourceMap ? sourceMap.sourceFile : emailLog.sessionId;
 
           return {
@@ -591,15 +682,16 @@ router.get('/status', async (req, res) => {
       }
     } else {
 
-      const recipients = await getRecipients(sessionId);
-      total = recipients.length;
-
       emailLog = await EmailLog.findOne({ sessionId }, '-entries').sort({ createdAt: -1 });
       if (emailLog) {
         sent = emailLog.sentCount || 0;
         failed = emailLog.failedCount || 0;
         lastError = emailLog.lastError || '';
       }
+
+      // Deliberately not getRecipients(): that read the entire list just to take
+      // its length. See getRecipientCount() for the resolution order.
+      total = await getRecipientCount(sessionId, emailLog);
     }
 
     const sentIndex = await getSentIndex(sessionId);
