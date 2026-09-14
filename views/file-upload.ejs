@@ -703,6 +703,49 @@
     let totalPages = 1;
     let filesPerPage = 15;
 
+    // Mirrors the server's multer limit (MAX_UPLOAD_MB). Used only for a client
+    // preflight; the server still enforces the real limit and can reject.
+    // Falls back to 0 (preflight disabled) rather than breaking the script if
+    // the local is ever not supplied by the route.
+    const MAX_UPLOAD_BYTES = <%= locals.maxUploadBytes || 0 %>;
+
+    // Shown for both the client preflight and any server/proxy 413. Deliberately
+    // free of byte counts, proxy names and version strings.
+    const TOO_LARGE_MESSAGE =
+      'File is too large for the current upload limit. Please use a smaller file.';
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
+      const mb = bytes / (1024 * 1024);
+      return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
+    }
+
+    /**
+     * Reads an error message from a response without assuming it is JSON.
+     *
+     * A 413 can come from the app (JSON) or from the reverse proxy (an HTML
+     * error page). Calling res.json() on the latter throws a SyntaxError that
+     * surfaces as "Unexpected token '<'", which reads like a client bug. So
+     * check the status first, then only parse when the content type says JSON.
+     */
+    async function readErrorMessage(res, fallback = 'Upload failed') {
+      if (res.status === 413) return TOO_LARGE_MESSAGE;
+
+      const contentType = (res.headers.get('content-type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        try {
+          const data = await res.json();
+          return data.error || data.message || fallback;
+        } catch {
+          return fallback;
+        }
+      }
+
+      // Non-JSON body (proxy error page, gateway timeout, etc). Never echo it
+      // back to the user, it can leak server software details.
+      return fallback;
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
     // ── Dialog Helper ──────────────────────────────────────────────────────────
     function showDialog({ title, message, type = 'info', confirm = false }) {
@@ -957,19 +1000,44 @@
         return;
       }
 
+      // Preflight: refuse oversized files locally instead of uploading the whole
+      // body just to be rejected. Both the picker and the drag/drop handler call
+      // through here, so both paths get this check.
+      // multer rejects at size >= fileSize (verified against multer 2.0.2), so
+      // use >= here too. Otherwise a file of exactly the limit would pass the
+      // preflight and then be refused by the server.
+      if (MAX_UPLOAD_BYTES > 0 && file.size >= MAX_UPLOAD_BYTES) {
+        showMsg(
+          `⚠️ ${TOO_LARGE_MESSAGE} (limit ${formatBytes(MAX_UPLOAD_BYTES)}, selected ${formatBytes(file.size)})`,
+          'error'
+        );
+        fileInput.value = '';
+        return;
+      }
+
       const formData = new FormData();
       formData.append('file', file);
 
       showMsg('⏳ Uploading...', 'info');
       try {
         const res = await fetch('/recipients', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+        // Check status before parsing. A proxy 413 has an HTML body, so parsing
+        // first would throw and mask the real reason.
+        if (!res.ok) {
+          throw new Error(await readErrorMessage(res));
+        }
+
         showMsg('✅ Uploaded successfully!', 'success');
         fileInput.value = '';
         await loadFiles(1);
       } catch (err) {
-        showMsg('❌ ' + err.message, 'error');
+        // A genuine transport failure has no response at all. Keep it distinct
+        // from a server rejection so "too large" is never guessed at.
+        const message = err instanceof TypeError
+          ? 'Upload failed: the connection was interrupted. Please try again.'
+          : err.message;
+        showMsg('❌ ' + message, 'error');
       }
     }
 
