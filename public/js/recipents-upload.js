@@ -86,42 +86,18 @@ function updateLogDisplay() {
   }
 }
 
-const smtpFields = [
-  { id: 'smtp-host', key: 'smtpHost' },
-  { id: 'smtp-port', key: 'smtpPort' },
-  { id: 'smtp-user', key: 'smtpUser' }
-];
-
-const LEGACY_SMTP_PASS_KEY = 'smtpPass';
-
-function loadSmtpCreds() {
-
-  localStorage.removeItem(LEGACY_SMTP_PASS_KEY);
-
-  smtpFields.forEach(f => {
-    const el = document.getElementById(f.id);
-    if (el && localStorage.getItem(f.key)) {
-      el.value = localStorage.getItem(f.key);
-    }
-  });
-}
-
-function saveSmtpCreds() {
-  smtpFields.forEach(f => {
-    const el = document.getElementById(f.id);
-    if (el) {
-      localStorage.setItem(f.key, el.value);
-    }
-  });
-}
-
-window.addEventListener('DOMContentLoaded', loadSmtpCreds);
+// Form state is persisted per user by public/js/form-persistence.js, which keeps
+// the draft server-side in EmailConfig. It replaced a localStorage copy of the
+// host/port/user that was written only on submit and was shared by every account
+// using the same browser profile.
 
 const emailForm = document.getElementById('email-form');
 if (emailForm) {
   emailForm.addEventListener('submit', function (e) {
     e.preventDefault();
-    saveSmtpCreds();
+
+    // Commit any keystrokes still inside the autosave debounce window.
+    if (window.FormPersistence) window.FormPersistence.flush();
 
     if (bulkRadio && bulkRadio.checked) {
       const fileIdsField = document.getElementById('file-ids');
@@ -350,12 +326,19 @@ function showError(msg) {
 const previewBtn = document.getElementById('preview-html');
 if (previewBtn) {
   previewBtn.addEventListener('click', function () {
+    // Read-only: the exact textarea value is what /send-email posts, so the
+    // preview must not normalise, re-encode or rewrite it in any way.
     const msg = document.getElementById('message').value;
     const isHtml = document.getElementById('html').checked;
+
     if (isHtml) {
-      showPopup('Preview', msg);
+      showPopup('Preview', msg, { emailPreview: true });
     } else {
-      showPopup('Preview', `<pre style="white-space:pre-wrap;word-break:break-word;">${escapeHtml(msg)}</pre>`);
+      showPopup(
+        'Preview',
+        `<pre style="white-space:pre-wrap;word-break:break-word;font-family:monospace;">${escapeHtml(msg)}</pre>`,
+        { emailPreview: true }
+      );
     }
   });
 }
@@ -369,7 +352,15 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
-function showPopup(title, html) {
+/**
+ * @param {string} title
+ * @param {string} html
+ * @param {{emailPreview?: boolean}} [options] When `emailPreview` is set the
+ *   content is rendered inside a sandboxed iframe instead of being injected
+ *   into this page, so email HTML and application CSS cannot affect each other.
+ */
+function showPopup(title, html, options) {
+  const settings = options || {};
 
   let oldPopup = document.getElementById('custom-popup');
   if (oldPopup) oldPopup.remove();
@@ -424,16 +415,20 @@ function showPopup(title, html) {
   const contentDiv = document.createElement('div');
   contentDiv.id = 'popup-content';
 
-  if (title === 'Preview') {
+  if (settings.emailPreview && window.HtmlPreview) {
     contentDiv.style.maxWidth = '900px';
     contentDiv.style.margin = '0 auto';
-    contentDiv.style.background = '#f9f9f9';
-    contentDiv.style.padding = '1em';
+    contentDiv.style.background = '#ffffff';
+    contentDiv.style.border = '1px solid #e2e5ea';
     contentDiv.style.borderRadius = '8px';
     contentDiv.style.boxShadow = '0 1px 4px #0001';
-    contentDiv.style.overflow = 'auto';
     contentDiv.style.display = 'block';
-    contentDiv.innerHTML = html;
+
+    // The frame scrolls internally, which is what lets wide desktop email
+    // layouts scroll horizontally instead of being squeezed to the modal width.
+    contentDiv.style.overflow = 'hidden';
+
+    window.HtmlPreview.renderPreview(contentDiv, html, { height: '70vh' });
   } else {
     contentDiv.innerHTML = html;
   }
