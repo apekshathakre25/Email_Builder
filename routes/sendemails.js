@@ -15,6 +15,8 @@ const EmailLog = require('../models/EmailLog');
 const EmailLogEntry = require('../models/EmailLogEntry');
 const UploadedFile = require('../models/UploadedFile');
 const ImapTestResult = require('../models/ImapTestResult');
+const EmailConfig = require('../models/EmailConfig');
+const { encrypt, tryDecrypt } = require('../utils/credentialCipher');
 const { generateMessageId } = require('../utils/messageIdGenerator');
 const logger = require('../utils/logger');
 
@@ -186,6 +188,138 @@ async function getLogStats(logKey) {
     });
   }
   return { sent, failed, lastError };
+}
+
+/**
+ * Form fields persisted as a per-user draft, mapped to schema keys.
+ * `smtp-pass` is deliberately absent: it is handled separately so the secret is
+ * never echoed back to the browser.
+ */
+const CONFIG_FIELD_KEYS = [
+  'smtpHost',
+  'smtpPort',
+  'smtpUser',
+  'customHeaders',
+  'fromEmail',
+  'subject',
+  'fromName',
+  'testRecipients',
+  'testBulk',
+  'messageType',
+  'message',
+  'fileIds',
+  'customMessageId',
+  'limit'
+];
+
+/**
+ * Returns the saved draft for the current operator.
+ *
+ * The SMTP password is never included. The client only learns whether one is
+ * stored (`hasSmtpPass`) so it can show that sending will reuse it, which keeps
+ * the plaintext on the server instead of shipping it on every page load.
+ */
+router.get('/email-config', async (req, res) => {
+  try {
+    const userId = req.user?.email;
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+    const saved = await EmailConfig.findOne({ userId }).select('+smtpPass');
+    if (!saved) return res.json({ success: true, config: null, hasSmtpPass: false });
+
+    // Built from an explicit allowlist, so the response cannot carry smtpPass
+    // even though this document was read with it.
+    const config = {};
+    for (const key of CONFIG_FIELD_KEYS) {
+      config[key] = typeof saved[key] === 'string' ? saved[key] : '';
+    }
+
+    res.json({ success: true, config, hasSmtpPass: Boolean(saved.smtpPass) });
+  } catch (err) {
+    console.error('Error fetching email config:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Upserts the draft for the current operator.
+ *
+ * Password semantics, chosen so an autosave of the rest of the form can never
+ * silently destroy a stored credential:
+ *   - key absent        -> leave the stored password untouched
+ *   - non-empty string  -> encrypt and replace
+ *   - empty string      -> the operator cleared the field, so clear the stored one
+ */
+router.post('/email-config', async (req, res) => {
+  try {
+    const userId = req.user?.email;
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+    const update = { userId, updatedAt: new Date() };
+    for (const key of CONFIG_FIELD_KEYS) {
+      if (body[key] === undefined || body[key] === null) continue;
+      update[key] = String(body[key]);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'smtpPass')) {
+      const raw = body.smtpPass === null || body.smtpPass === undefined ? '' : String(body.smtpPass);
+      update.smtpPass = raw === '' ? '' : encrypt(raw);
+    }
+
+    await EmailConfig.findOneAndUpdate(
+      { userId },
+      update,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error saving email config:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Discards the saved draft, including the stored SMTP password.
+ */
+router.delete('/email-config', async (req, res) => {
+  try {
+    const userId = req.user?.email;
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+
+    await EmailConfig.deleteOne({ userId });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error clearing email config:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Resolves the SMTP password for a send.
+ *
+ * The password field is not repopulated after a refresh (the secret stays on the
+ * server), so an empty field with a stored credential means "reuse the saved
+ * one". A submitted password always wins, and with nothing stored this returns
+ * the submitted value unchanged — so behaviour is identical for anyone who has
+ * never saved a draft.
+ */
+async function resolveSmtpPass(userId, submitted) {
+  if (submitted) return submitted;
+  if (!userId) return submitted;
+
+  const saved = await EmailConfig.findOne({ userId }).select('+smtpPass');
+  if (!saved || !saved.smtpPass) return submitted;
+
+  const decrypted = tryDecrypt(saved.smtpPass);
+  if (!decrypted.ok) {
+    console.error(`Could not decrypt stored SMTP password for ${userId}: ${decrypted.error}`);
+    return submitted;
+  }
+
+  return decrypted.value;
 }
 
 router.post('/recipients', upload.single('file'), async (req, res) => {
@@ -380,11 +514,16 @@ router.post('/send-email', async (req, res) => {
     batchCount = batch.length;
     logKey = `emaillog:${sessionId}`;
 
+    // Falls back to the saved encrypted password when the field was left empty
+    // because the browser was refreshed. Returns `smtpPass` untouched when the
+    // operator supplied one or has nothing saved.
+    const resolvedSmtpPass = await resolveSmtpPass(req.user?.email, smtpPass);
+
     const smtp = {
       host: smtpHost,
       port: parseInt(smtpPort),
       secure: parseInt(smtpPort) === 465,
-      auth: { user: smtpUser, pass: smtpPass }
+      auth: { user: smtpUser, pass: resolvedSmtpPass }
     };
     const from = `${fromName} <${fromEmail}>`;
     const isHtml = plainHtml === 'HTML';

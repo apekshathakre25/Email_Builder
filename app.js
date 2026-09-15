@@ -67,7 +67,12 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
       fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com'],
-      imgSrc: ["'self'", 'data:'],
+      // Remote images are required by the Message/HTML preview: email templates
+      // reference images on the sender's CDN, and a srcdoc iframe inherits this
+      // policy, so 'self' alone renders every remote <img> as a broken image.
+      // The preview frame ships its own tighter policy (see html-preview.js);
+      // this only widens the image sources the page is permitted to fetch.
+      imgSrc: ["'self'", 'data:', 'https:', 'http:'],
       connectSrc: ["'self'"],
       formAction: ["'self'"],
       frameAncestors: ["'none'"],
