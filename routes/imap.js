@@ -543,8 +543,12 @@ router.post('/check-auto-test', async (req, res) => {
                             if (isMatch) {
                                 foundTestIds.add(testResult.testId);
                                 console.log(`📧 INBOX: Found test email for ${testResult.testEmail} using ${matchMethod}`);
-                                const rawHeaders = parsed.headers ? parsed.headers.toString() : '';
-                                const rawBody = parsed.text || parsed.html || '';
+                                // Only fullRaw is captured now. rawHeaders and rawBody were
+                                // also being stored, but nothing ever read them: the details
+                                // modal renders emailDetails.preview and emailDetails.fullRaw
+                                // only. fullRaw already contains the headers and the body
+                                // verbatim, so those two fields were a second and third copy
+                                // of the same message on every test document.
                                 const fullRaw = message.source ? message.source.toString() : '';
 
                                 results.push({
@@ -557,8 +561,6 @@ router.post('/check-auto-test', async (req, res) => {
                                     uid: message.uid,
                                     messageId: extractedMessageId,
                                     preview: parsed.text ? parsed.text.substring(0, 100) : '',
-                                    rawHeaders: rawHeaders,
-                                    rawBody: rawBody,
                                     fullRaw: fullRaw
                                 });
                             }
@@ -638,8 +640,8 @@ router.post('/check-auto-test', async (req, res) => {
                                     if (isMatch) {
                                         foundTestIds.add(testResult.testId);
                                         console.log(`📧 SPAM: Found test email for ${testResult.testEmail} using ${matchMethod}`);
-                                        const rawHeaders = parsed.headers ? parsed.headers.toString() : '';
-                                        const rawBody = parsed.text || parsed.html || '';
+                                        // See the INBOX branch: fullRaw supersedes rawHeaders
+                                        // and rawBody, which nothing reads.
                                         const fullRaw = message.source ? message.source.toString() : '';
 
                                         results.push({
@@ -652,8 +654,6 @@ router.post('/check-auto-test', async (req, res) => {
                                             uid: message.uid,
                                             messageId: extractedMessageId,
                                             preview: parsed.text ? parsed.text.substring(0, 100) : '',
-                                            rawHeaders: rawHeaders,
-                                            rawBody: rawBody,
                                             fullRaw: fullRaw
                                         });
                                     }
@@ -682,8 +682,6 @@ router.post('/check-auto-test', async (req, res) => {
                         messageId: result.messageId,
                         uid: result.uid,
                         preview: result.preview,
-                        rawHeaders: result.rawHeaders,
-                        rawBody: result.rawBody,
                         fullRaw: result.fullRaw
                     }
                 }

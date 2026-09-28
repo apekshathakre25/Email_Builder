@@ -4,7 +4,7 @@ const MIN_SECRET_LENGTH = 32;
 const KEY_HEX_LENGTH = 64;
 
 
-const APP_NAME = 'Bulk Email Sender';
+const APP_NAME = 'Opterite';
 
 
 const FREEMAIL_SENDER_DOMAINS = [
@@ -178,6 +178,50 @@ function parsePositiveInt(name, fallback) {
   return Math.floor(parsed);
 }
 
+
+/**
+ * Integer within an inclusive range.
+ *
+ * Used for the retention settings, where a silently-accepted absurd value is
+ * dangerous in a specific way: DB_CLEANUP_DAYS=0 would mean "delete everything
+ * written up to this instant" on the next sweep. Out-of-range values fall back
+ * to the default and warn rather than being clamped, so a typo is visible in the
+ * logs instead of quietly becoming a different retention policy.
+ */
+function parseIntInRange(name, fallback, { min, max }) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+
+  const parsed = Number(raw);
+
+  if (!Number.isInteger(parsed)) {
+    warnings.push(`${name}="${raw}" is not an integer; falling back to ${fallback}.`);
+    return fallback;
+  }
+
+  if (parsed < min || parsed > max) {
+    warnings.push(
+      `${name}=${parsed} is outside the supported range ${min}–${max}; falling back to ${fallback}.`
+    );
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function parseBoolean(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+
+  const normalized = String(raw).trim().toLowerCase();
+
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+
+  warnings.push(`${name}="${raw}" is not a boolean; falling back to ${fallback}.`);
+  return fallback;
+}
+
 const env = {
   isProduction,
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -218,6 +262,45 @@ const env = {
   maxRequestBodyBytes: parsePositiveInt('MAX_REQUEST_BODY_MB', 10) * 1024 * 1024,
   workerConcurrency: parsePositiveInt('WORKER_CONCURRENCY', 20),
 
+  /**
+   * Retention policy for disposable data (campaign logs, per-recipient send
+   * outcomes, inbox-placement tests, spent recipient files).
+   *
+   * `retentionDays` is the only value that decides what gets deleted, and it has
+   * no literal anywhere else in the codebase — utils/dbCleanup.js and the TTL
+   * index on ImapTestResult both derive their cutoff from it.
+   *
+   * `intervalHours` is deliberately a separate knob and much shorter than the
+   * retention window. Sweeping only once per retention period would let a full
+   * period of data pile up and then delete it in one burst; sweeping every few
+   * hours keeps each run small enough to stay invisible to production traffic.
+   * Changing retention does not change how often the sweep runs.
+   *
+   * Operator config (emailconfigs, testemailaccounts, imapcredentials) is never
+   * age-deleted and is not covered by any of these settings.
+   */
+  dbCleanup: {
+    enabled: parseBoolean('DB_CLEANUP_ENABLED', true),
+
+    // 1 day minimum: a 0 would make the cutoff "now" and wipe live campaigns.
+    retentionDays: parseIntInRange('DB_CLEANUP_DAYS', 3, { min: 1, max: 3650 }),
+
+    intervalHours: parseIntInRange('DB_CLEANUP_INTERVAL_HOURS', 6, { min: 1, max: 720 }),
+
+    // Documents per deleteMany. Small enough that each round trip holds locks
+    // briefly, large enough that a big backlog still drains.
+    batchSize: parseIntInRange('DB_CLEANUP_BATCH_SIZE', 1000, { min: 100, max: 10000 }),
+
+    // Per-collection ceiling for one run. A first sweep over a long-neglected
+    // collection stops here and resumes next interval instead of running for
+    // hours; it also bounds how long the distributed lock is held.
+    maxDeletesPerRun: parseIntInRange('DB_CLEANUP_MAX_DELETES_PER_RUN', 250000, { min: 1000, max: 5000000 }),
+
+    // Spent recipient files are the only cleanup target that also unlinks from
+    // disk, so it gets its own off switch.
+    includeUploadedFiles: parseBoolean('DB_CLEANUP_UPLOADED_FILES', true)
+  },
+
 
   trustProxy: process.env.TRUST_PROXY === undefined
     ? (isProduction ? 1 : 0)
@@ -226,6 +309,14 @@ const env = {
 
 
 env.cookieSecure = isProduction;
+
+
+// Derived once so the day → seconds/ms conversion exists in exactly one place.
+// The TTL index and the sweep cutoff must agree, or the two mechanisms would
+// disagree about what "expired" means.
+env.dbCleanup.retentionSeconds = env.dbCleanup.retentionDays * 24 * 60 * 60;
+env.dbCleanup.retentionMs = env.dbCleanup.retentionSeconds * 1000;
+env.dbCleanup.intervalMs = env.dbCleanup.intervalHours * 60 * 60 * 1000;
 
 if (isProduction && env.google.enabled && env.google.callbackUrl?.startsWith('http://')) {
   warnings.push('GOOGLE_CALLBACK_URL uses http:// in production; OAuth redirects should be https://.');

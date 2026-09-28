@@ -18,7 +18,7 @@ const toInt = (value, fallback) => {
 module.exports = {
   apps: [
     {
-      name: "bulk-email-sender",
+      name: "opterite",
       script: "app.js",
       instances: toInt(process.env.WEB_INSTANCES, 4),
       exec_mode: "cluster",
@@ -47,7 +47,7 @@ module.exports = {
     },
 
     {
-      name: "bulk-email-worker",
+      name: "opterite-worker",
       script: "workprocess/mailer.js",
       instances: toInt(process.env.WORKER_INSTANCES, 14),
       exec_mode: "fork",

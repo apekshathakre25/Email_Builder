@@ -73,6 +73,13 @@ const uploadedFileSchema = new mongoose.Schema({
   }
 });
 
+/**
+ * Supports the retention sweep, which selects spent files on
+ * { status: { $in: ['completed', 'failed'] }, uploadDate: { $lt: cutoff } },
+ * and the default `/files` listing, which sorts on uploadDate.
+ */
+uploadedFileSchema.index({ status: 1, uploadDate: 1 });
+
 uploadedFileSchema.virtual('completionPercentage').get(function () {
   if (this.validEmails === 0) return 0;
   return Math.round(((this.sentEmails + this.failedEmails) / this.validEmails) * 100);

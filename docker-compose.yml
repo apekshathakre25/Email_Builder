@@ -1,0 +1,83 @@
+# Opterite — local/self-hosted stack.
+#
+#   docker compose up -d --build          start everything
+#   docker compose up -d --scale worker=4 more send throughput
+#   docker compose logs -f web worker     tail application logs
+#
+# Secrets come from ./.env (never baked into the image). REDIS_URL and
+# MONGODB_URI are overridden below so they point at the service names on the
+# compose network instead of localhost.
+
+name: bulk-email-sender
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: bulk-email-sender:latest
+  restart: unless-stopped
+  init: true
+  env_file:
+    - .env
+  environment:
+    NODE_ENV: production
+    REDIS_URL: redis://redis:6379
+    MONGODB_URI: mongodb://mongo:27017/bulk_email_sender
+  volumes:
+    # Uploaded recipient files must outlive the container: the web app writes
+    # them and the worker reads them back by path, so both mount the same volume.
+    - uploads:/app/uploads
+    - logs:/app/logs
+  depends_on:
+    redis:
+      condition: service_healthy
+    mongo:
+      condition: service_healthy
+
+services:
+  web:
+    <<: *app
+    command: ["node", "app.js"]
+    ports:
+      - "3000:3000"
+
+  worker:
+    <<: *app
+    command: ["node", "workprocess/mailer.js"]
+    # The worker has no HTTP listener, so the image HEALTHCHECK (curl /healthz)
+    # would always fail here. Bull redelivers jobs from a crashed worker, so
+    # restart-on-exit is the real supervision.
+    healthcheck:
+      disable: true
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Bull stores queue state in Redis. appendonly keeps queued jobs across a
+    # restart; without it a `docker compose restart redis` silently drops them.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  uploads:
+  logs:
+  redis-data:
+  mongo-data:

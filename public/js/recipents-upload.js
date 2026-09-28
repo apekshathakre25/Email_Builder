@@ -3,6 +3,25 @@ let lastLimit = 0;
 let lastBatchCount = 0;
 let isSending = false;
 
+/**
+ * Whether the campaign the page is watching has been stopped.
+ *
+ * Set from the /status response, not from the click that requested the stop. The
+ * server is the only thing that knows whether sending actually ceased, and reading
+ * it back means a stop issued from another tab — or by another operator — reaches
+ * this page too. The click is a request; this flag is the answer.
+ */
+let campaignStopped = false;
+
+/**
+ * Handle for the automatic re-submission scheduled after an HTTP 429.
+ *
+ * Kept so it can be cancelled. Without this, stopping a campaign that had just
+ * been rate-limited would look stopped for a few seconds and then restart itself,
+ * because the retry fires on a timer that knows nothing about the stop.
+ */
+let pendingResubmitTimer = null;
+
 let currentLogs = [];
 let currentPage = 1;
 let totalPages = 1;
@@ -91,13 +110,295 @@ function updateLogDisplay() {
 // host/port/user that was written only on submit and was shared by every account
 // using the same browser profile.
 
+/**
+ * Validates the Limit / Interval pair, returning an error string or ''.
+ *
+ * Bounds are duplicated from utils/emailRateLimiter.js (LIMIT_MIN/LIMIT_MAX,
+ * INTERVAL_SECONDS_MIN/INTERVAL_SECONDS_MAX). If those change, change them here
+ * too — the server stays authoritative either way, so a drift shows up as a 400
+ * rather than as an accepted bad value.
+ *
+ * Both fields empty is valid and means "no rate limit", which is how every
+ * campaign behaved before the interval field existed.
+ */
+const RATE_LIMIT_MIN = 1;
+const RATE_LIMIT_MAX = 1000000;
+const RATE_INTERVAL_MIN_SECONDS = 0.1;
+const RATE_INTERVAL_MAX_SECONDS = 3600;
+
+/**
+ * Bounds for Limit to Send. Mirrors LIMIT_TO_SEND_MIN/MAX in routes/sendemails.js, which
+ * re-checks every value — this only exists so a typo is reported without a round trip.
+ *
+ * A wider ceiling than the rate's on purpose: this counts recipients, and a campaign can
+ * legitimately exceed a million, so the bound is only a typo guard.
+ */
+const LIMIT_TO_SEND_MIN = 1;
+const LIMIT_TO_SEND_MAX = 10000000;
+
+/**
+ * Validates the per-action cap. Empty is valid and means "no cap".
+ *
+ * Deliberately independent of the rate check: Limit to Send is a batch size, not a
+ * second rate, so it neither requires nor constrains Limit and Interval.
+ */
+function validateLimitToSend(raw) {
+  const text = (raw === null || raw === undefined ? '' : String(raw)).trim();
+  if (text === '') return '';
+
+  const value = Number(text);
+
+  if (!Number.isInteger(value)) {
+    return 'Limit to Send must be a whole number of emails (got "' + text + '").';
+  }
+  if (value < LIMIT_TO_SEND_MIN) {
+    return 'Limit to Send must be at least ' + LIMIT_TO_SEND_MIN +
+      ' — leave it empty for no limit (got ' + value + ').';
+  }
+  if (value > LIMIT_TO_SEND_MAX) {
+    return 'Limit to Send must be ' + LIMIT_TO_SEND_MAX + ' or less (got ' + value + ').';
+  }
+
+  return '';
+}
+
+function validateSendRate(limitRaw, intervalRaw) {
+  const limit = (limitRaw === null || limitRaw === undefined ? '' : String(limitRaw)).trim();
+  const interval = (intervalRaw === null || intervalRaw === undefined ? '' : String(intervalRaw)).trim();
+
+  if (limit !== '') {
+    // Number(), not parseInt(): parseInt('35abc') is 35, which would let a typo
+    // through as a valid rate.
+    const value = Number(limit);
+    if (!Number.isInteger(value)) {
+      return 'Limit must be a whole number of emails (got "' + limit + '").';
+    }
+    if (value < RATE_LIMIT_MIN || value > RATE_LIMIT_MAX) {
+      return 'Limit must be between ' + RATE_LIMIT_MIN + ' and ' + RATE_LIMIT_MAX + '.';
+    }
+  }
+
+  if (interval === '') return '';
+
+  const seconds = Number(interval);
+  if (!Number.isFinite(seconds)) {
+    return 'Interval (seconds) must be a number (got "' + interval + '").';
+  }
+  if (seconds < RATE_INTERVAL_MIN_SECONDS || seconds > RATE_INTERVAL_MAX_SECONDS) {
+    return 'Interval (seconds) must be between ' + RATE_INTERVAL_MIN_SECONDS +
+      ' and ' + RATE_INTERVAL_MAX_SECONDS + '.';
+  }
+  if (limit === '') {
+    return 'Interval (seconds) needs a Limit — Limit is how many emails each interval allows.';
+  }
+
+  return '';
+}
+
+/**
+ * Locks or unlocks the send-rate inputs.
+ *
+ * Locked while a campaign is running, because the rate is fixed when a batch is
+ * enqueued — the jobs already carry it — so editing the fields mid-campaign would
+ * change the numbers on screen without changing what the workers do. Unlocked the
+ * moment the campaign stops or finishes, which is what lets the operator set a new
+ * Limit and Interval and start again.
+ *
+ * `readOnly`, emphatically not `disabled`. A disabled control is omitted from
+ * FormData, so locking these with `disabled` would make the next submission post an
+ * empty `limit` and `interval-seconds` — and an absent interval is precisely how the
+ * server is told "no rate limit". Locking the fields would therefore have silently
+ * converted the next batch of a paced campaign into an unpaced one that sends every
+ * remaining recipient as fast as SMTP allows. `readOnly` prevents editing while
+ * still submitting the values.
+ */
+function setRateInputsLocked(locked) {
+  for (const id of ['limit', 'interval-seconds']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+
+    el.readOnly = Boolean(locked);
+    el.setAttribute('aria-readonly', locked ? 'true' : 'false');
+    el.title = locked
+      ? 'Stop sending to change the rate. The running campaign already has this rate applied.'
+      : '';
+  }
+}
+
+/** Shows or hides both Stop Sending buttons together. They are one control. */
+function setStopControlsVisible(visible) {
+  const mainBtn = document.getElementById('stop-sending');
+  if (mainBtn) mainBtn.hidden = !visible;
+}
+
+/** Cancels a queued 429 retry, so a stop cannot be undone by a pending timer. */
+function cancelPendingResubmit() {
+  if (pendingResubmitTimer) {
+    clearTimeout(pendingResubmitTimer);
+    pendingResubmitTimer = null;
+  }
+}
+
+/**
+ * Puts the page into the stopped state.
+ *
+ * Called only once the server has confirmed the stop, or once /status reports one.
+ * Every visible consequence of a stop is applied from this one place so the two
+ * buttons, a stop from another tab and a page reload all produce the same UI.
+ */
+function applyStoppedState(message) {
+  campaignStopped = true;
+  isSending = false;
+
+  cancelPendingResubmit();
+  stopStatusPolling();
+  stopIntervalCountdown();
+
+  setStopControlsVisible(false);
+  setRateInputsLocked(false);
+  markIntervalPopupStopped();
+
+  if (message) showError(message);
+}
+
+/**
+ * Asks the operator to confirm the stop.
+ *
+ * Uses the application's own dialog (public/js/confirm-dialog.js) rather than
+ * `window.confirm`. The native dialog put browser chrome — "localhost:3000 says" —
+ * around the most consequential action in the product, and because it blocks the
+ * main thread it also froze the status poller and the interval countdown for as long
+ * as it was open, so the numbers behind it were stale the moment it was answered.
+ *
+ * Falls back to `window.confirm` if the module did not load. A missing script must
+ * not leave the operator unable to stop a campaign.
+ */
+function askToStop() {
+  const lines = [
+    'No further emails will be sent for this campaign.',
+    'Emails already delivered stay delivered, and the remaining recipients stay ' +
+    'pending — you can change Limit and Interval and send them later.'
+  ];
+
+  if (window.ConfirmDialog && typeof window.ConfirmDialog.confirm === 'function') {
+    return window.ConfirmDialog.confirm({
+      title: 'Stop sending this campaign?',
+      message: lines,
+      confirmLabel: 'Stop Sending',
+      cancelLabel: 'Keep Sending',
+      tone: 'danger'
+    });
+  }
+
+  return Promise.resolve(window.confirm('Stop sending this campaign?\n\n' + lines.join('\n\n')));
+}
+
+/**
+ * THE stop action. Both buttons call this; there is nothing else to call.
+ *
+ * Deliberately does not touch the countdown or the counters before the request
+ * returns. A UI that goes quiet on click and only then asks the server to stop is
+ * the failure this feature exists to avoid — it teaches the operator to trust the
+ * screen over the mail server. So the request goes first, and the display changes
+ * when the server confirms the stop is in force.
+ */
+async function stopSending(options) {
+  const opts = options || {};
+  const target = sessionId || window.currentSessionId;
+
+  if (!target) {
+    showError('⚠️ There is no campaign to stop yet.');
+    return;
+  }
+
+  if (!opts.skipConfirm) {
+    const ok = await askToStop();
+    if (!ok) return;
+  }
+
+  // Cancelled immediately rather than after the response: a 429 retry that fires
+  // while the stop request is still in flight would enqueue another batch.
+  cancelPendingResubmit();
+
+  const buttons = Array.from(document.querySelectorAll('[data-stop-sending]'))
+    .concat(document.getElementById('stop-sending') || []);
+
+  for (const btn of buttons) {
+    if (btn) btn.disabled = true;
+  }
+
+  showError('⏳ Stopping — waiting for the server to confirm no more emails will be released…');
+
+  try {
+    const res = await fetch('/stop-sending', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: target })
+    });
+
+    let data;
+    try { data = await res.json(); } catch { data = {}; }
+
+    if (!res.ok) {
+      // The campaign is still running, so the UI must keep saying so.
+      for (const btn of buttons) {
+        if (btn) btn.disabled = false;
+      }
+      showError(
+        `❌ Could not stop the campaign: ${data.error || data.message || 'HTTP ' + res.status}. ` +
+        'Sending is still in progress — try again.'
+      );
+      return;
+    }
+
+    const tally = `${data.sent || 0} sent, ${data.failed || 0} failed, ${data.pending || 0} still pending`;
+    applyStoppedState(
+      data.alreadyStopped
+        ? `⏹️ This campaign was already stopped — ${tally}. Change Limit/Interval and click Send Email to continue.`
+        : `⏹️ Sending stopped — ${tally}. Change Limit/Interval and click Send Email to continue.`
+    );
+
+    // One last read, so the counters settle on whatever the in-flight sends
+    // finished with rather than freezing at the moment of the click.
+    setTimeout(() => { pollStatusOnce(target); }, 1200);
+  } catch (err) {
+    for (const btn of buttons) {
+      if (btn) btn.disabled = false;
+    }
+    showError(
+      `⚠️ Could not reach the server to stop the campaign (${err.message || err}). ` +
+      'Sending may still be in progress — try again.'
+    );
+  } finally {
+    for (const btn of buttons) {
+      if (btn) btn.disabled = false;
+    }
+  }
+}
+
+const stopSendingBtn = document.getElementById('stop-sending');
+if (stopSendingBtn) {
+  stopSendingBtn.addEventListener('click', () => stopSending());
+}
+
 const emailForm = document.getElementById('email-form');
 if (emailForm) {
-  emailForm.addEventListener('submit', function (e) {
+  emailForm.addEventListener('submit', async function (e) {
     e.preventDefault();
 
     // Commit any keystrokes still inside the autosave debounce window.
     if (window.FormPersistence) window.FormPersistence.flush();
+
+    // Drop an SMTP password the browser autofilled on its own. It would otherwise
+    // be submitted below and, because /send-email prefers a submitted password
+    // over the stored one, the campaign would authenticate with a string the
+    // operator never chose. An empty field is how this form asks the server to use
+    // the saved credential, so this restores that rather than losing anything.
+    // Called here, before the FormData snapshot, because form-persistence.js binds
+    // its own submit listener after this handler and so cannot get in first.
+    if (window.FormPersistence && window.FormPersistence.discardUngesturedPassword) {
+      window.FormPersistence.discardUngesturedPassword();
+    }
 
     if (bulkRadio && bulkRadio.checked) {
       const fileIdsField = document.getElementById('file-ids');
@@ -140,8 +441,43 @@ if (emailForm) {
       }
     }
 
+    // Send-rate validation. Mirrors utils/emailRateLimiter.js, which re-checks
+    // every value server-side — this only exists so a typo is reported instantly
+    // instead of costing a round trip.
+    var rateError = validateSendRate(formData.get('limit'), formData.get('interval-seconds'));
+    if (rateError) {
+      showError('❌ ' + rateError);
+      return;
+    }
+
+    var limitToSendError = validateLimitToSend(formData.get('limit-to-send'));
+    if (limitToSendError) {
+      showError('❌ ' + limitToSendError);
+      return;
+    }
+
+    // One campaign per operator at a time. The server decides the order; this waits
+    // for its turn and resolves true when cleared to send, so a second tab holds here
+    // instead of sending alongside the first. Placed after every local validation so
+    // a misconfigured form is reported immediately rather than after a queue wait.
+    //
+    // Resolves true immediately for test-mode sends and when no sequencer is loaded,
+    // so behaviour without this feature is unchanged.
+    if (window.CampaignSequencer) {
+      const cleared = await window.CampaignSequencer.requestSend();
+      if (!cleared) return;
+    }
+
     lastLimit = parseInt(formData.get('limit')) || 0;
     isSending = true;
+
+    // A submission is a fresh start, including after a stop. The flag is cleared
+    // here so the poller can set it again from the server rather than inheriting
+    // the previous campaign's verdict, and any retry left over from a 429 on the
+    // previous attempt is discarded so it cannot fire against this one.
+    campaignStopped = false;
+    cancelPendingResubmit();
+    closeIntervalPopup();
 
     const formDataObj = Object.fromEntries(formData.entries());
     console.log('Sending form data:', formDataObj);
@@ -154,21 +490,82 @@ if (emailForm) {
         let data;
         try { data = await res.json(); } catch { data = {}; }
         if (!res.ok) {
-          showError(data.error || 'Send failed.');
+          isSending = false;
+
+          // A rejected submission is not a failed campaign. Anything already
+          // queued keeps sending; only this batch was refused. Saying "Send
+          // failed." here is what led operators to believe a running campaign
+          // had died.
+          if (res.status === 429 || data.code === 'RATE_LIMITED') {
+            const wait = data.retryAfterSeconds ? ` Retrying in ${data.retryAfterSeconds}s.` : '';
+            showError(`⏳ ${data.message || data.error || 'Too many requests.'}${wait} Emails already queued keep sending.`);
+
+            // Retry once the window has rolled over, so a transient 429 does not
+            // require the operator to notice and click again. Retry-After comes
+            // from the limiter's draft-7 standardHeaders.
+            //
+            // The handle is kept, and the stop flag re-checked when it fires, so
+            // this cannot resurrect a campaign the operator stopped in the
+            // meantime — which would otherwise look like the stop silently failed.
+            const retryMs = Math.min(60, Math.max(2, data.retryAfterSeconds || 10)) * 1000;
+            cancelPendingResubmit();
+            pendingResubmitTimer = setTimeout(() => {
+              pendingResubmitTimer = null;
+              if (campaignStopped) {
+                showError('⏹️ Sending is stopped — the queued retry was cancelled.');
+                return;
+              }
+              if (emailForm) emailForm.requestSubmit();
+            }, retryMs);
+            return;
+          }
+
+          if (res.status === 401 || res.status === 403) {
+            showError('🔒 Your session expired. Please sign in again — queued emails keep sending.');
+            return;
+          }
+
+          // A real, specific rejection from the application (bad file id, no
+          // recipients left, oversized payload) carries its own text.
+          if (data.error || data.message) {
+            showError(`❌ ${data.error || data.message}`);
+            return;
+          }
+
+          // Non-JSON body: a proxy 502/504 or similar. The request may well have
+          // been processed server-side, so do not claim the send failed.
+          showError(`⚠️ The server returned HTTP ${res.status} without details. Check the status counters before resubmitting.`);
           return;
         }
         if (data.status === 'enqueued') {
           showError('');
           lastBatchCount = data.batchCount;
 
+          // Confirms to the sequencer that the submission landed, so a later batch of
+          // this same campaign from this tab is recognised as a continuation rather
+          // than a second tab trying to start it.
+          if (window.CampaignSequencer) window.CampaignSequencer.markSubmitted();
+
+          // There is now a campaign to stop, and the rate is fixed for the work
+          // just enqueued, so the inputs lock until it stops or finishes.
+          setStopControlsVisible(true);
+          setRateInputsLocked(true);
+
           if (testRadio && testRadio.checked) {
           } else if (bulkRadio && bulkRadio.checked) {
-            const currentPending = parseInt(document.getElementById('bulk-pending').textContent) || 0;
-            const newPending = Math.max(0, currentPending - lastBatchCount);
-
+            // Queue and Limit only. Both are known exactly and locally: this batch
+            // was just accepted, and the limit is what was typed into the form.
+            //
+            // Pending is deliberately NOT written here any more. It used to be
+            // decremented by the batch size at submit, which is what made it look
+            // like the responsive counter while Sent looked broken — it was
+            // reporting work as no longer pending the moment it was *queued*,
+            // before a single email had been sent, and from a number the browser
+            // made up rather than anything the server agreed with. The next poll
+            // then overwrote it with total - sent - failed, so it visibly jumped
+            // back up. /status now returns `pending` and this waits for it.
             document.getElementById('bulk-queue').textContent = lastBatchCount;
             document.getElementById('bulk-total-sending').textContent = lastLimit;
-            document.getElementById('bulk-pending').textContent = newPending;
           }
 
           startStatusPolling();
@@ -201,12 +598,232 @@ if (emailForm) {
           showError(data.error);
         }
       })
-      .catch(err => showError('Send failed: ' + (err.message || err)));
+      .catch(err => {
+        isSending = false;
+
+        // The fetch itself never completed: connection dropped, navigation
+        // aborted it (a page refresh does exactly this), or the proxy timed out.
+        // The server may still have accepted and enqueued the batch, so this is
+        // explicitly not reported as a failed campaign.
+        showError(
+          '⚠️ Could not confirm the request reached the server (' +
+          (err.message || err) +
+          '). Anything already queued keeps sending — check the counters before resubmitting.'
+        );
+      });
   });
+}
+
+/* --------------------------------------------------------------------------
+   Interval status popup
+   --------------------------------------------------------------------------
+   Shows the rate a paced campaign is running at, its progress, and how long
+   until the next interval opens — plus a Stop Sending button.
+
+   The countdown is driven locally between polls but *anchored* to the server on
+   every poll: /status returns window.resetInMs, read from the same Redis bucket
+   the workers are gated on, and the local ticker only fills the 1.5s gap between
+   readings. It is never the source of truth, which is why a stop cannot leave it
+   counting down against a campaign that is no longer sending.
+
+   Only ever shown for a campaign with a rate configured. Without an interval there
+   are no intervals to report, so no popup appears.
+   -------------------------------------------------------------------------- */
+
+const INTERVAL_POPUP_ID = 'interval-status-popup';
+
+let intervalCountdownTimer = null;
+let intervalCountdownMs = 0;
+let intervalCountdownAt = 0;
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function getIntervalPopup() {
+  return document.getElementById(INTERVAL_POPUP_ID);
+}
+
+function closeIntervalPopup() {
+  stopIntervalCountdown();
+  const popup = getIntervalPopup();
+  if (popup) popup.remove();
+}
+
+function buildIntervalPopup() {
+  const popup = document.createElement('div');
+  popup.id = INTERVAL_POPUP_ID;
+  popup.className = 'interval-popup';
+  popup.setAttribute('role', 'status');
+  popup.setAttribute('aria-live', 'polite');
+
+  popup.innerHTML = `
+    <button type="button" class="interval-popup__close" aria-label="Hide this panel">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <h3 class="interval-popup__title">Email Sending</h3>
+    <dl class="interval-popup__grid">
+      <dt>Limit</dt><dd data-field="limit">—</dd>
+      <dt>Interval</dt><dd data-field="interval">—</dd>
+      <dt>Sent</dt><dd data-field="sent">0</dd>
+      <dt>Pending</dt><dd data-field="pending">0</dd>
+      <dt>Next interval</dt><dd data-field="countdown">00:00</dd>
+    </dl>
+    <p class="interval-popup__note" data-field="note"></p>
+    <button type="button" class="btn btn--danger interval-popup__stop" data-stop-sending>
+      <i class="fa-solid fa-circle-stop"></i> Stop Sending
+    </button>
+  `;
+
+  // Hiding the panel is not stopping the campaign. Closing it only removes the
+  // display; the campaign keeps running and the button beside Send Email remains
+  // the other way to stop it.
+  popup.querySelector('.interval-popup__close').addEventListener('click', closeIntervalPopup);
+
+  // The second entry point to the one stop operation. Same function, same request,
+  // same result as the button beside Send Email.
+  popup.querySelector('[data-stop-sending]').addEventListener('click', () => stopSending());
+
+  document.body.appendChild(popup);
+  return popup;
+}
+
+function stopIntervalCountdown() {
+  if (intervalCountdownTimer) {
+    clearInterval(intervalCountdownTimer);
+    intervalCountdownTimer = null;
+  }
+}
+
+function renderCountdown() {
+  const popup = getIntervalPopup();
+  if (!popup) {
+    stopIntervalCountdown();
+    return;
+  }
+
+  const field = popup.querySelector('[data-field="countdown"]');
+  if (!field) return;
+
+  const elapsed = Date.now() - intervalCountdownAt;
+  field.textContent = formatCountdown(intervalCountdownMs - elapsed);
+}
+
+function startIntervalCountdown(resetInMs) {
+  intervalCountdownMs = Math.max(0, Number(resetInMs) || 0);
+  intervalCountdownAt = Date.now();
+
+  renderCountdown();
+
+  if (!intervalCountdownTimer) {
+    intervalCountdownTimer = setInterval(renderCountdown, 250);
+  }
+}
+
+/**
+ * Turns the popup into a record of the stop.
+ *
+ * The panel is not closed outright: the operator has just asked for something
+ * consequential and the final counters are what they want to see. The countdown is
+ * halted, the stop button goes — there is nothing left to stop — and the note says
+ * what happened.
+ */
+function markIntervalPopupStopped() {
+  stopIntervalCountdown();
+
+  const popup = getIntervalPopup();
+  if (!popup) return;
+
+  popup.classList.add('interval-popup--stopped');
+
+  const countdown = popup.querySelector('[data-field="countdown"]');
+  if (countdown) countdown.textContent = '—';
+
+  const note = popup.querySelector('[data-field="note"]');
+  if (note) note.textContent = 'Sending stopped. Remaining recipients are still pending.';
+
+  const stopBtn = popup.querySelector('[data-stop-sending]');
+  if (stopBtn) stopBtn.remove();
+}
+
+/**
+ * Reflects a /status payload in the popup, creating it if this campaign is paced.
+ *
+ * Driven entirely by the response. When `rateLimit` is null the campaign has no
+ * interval, so any popup left over from a previous campaign is removed rather than
+ * shown with stale numbers.
+ */
+function updateIntervalPopup(data) {
+  const rate = data && data.rateLimit;
+
+  if (!rate || !rate.limit || !rate.intervalSeconds) {
+    closeIntervalPopup();
+    return;
+  }
+
+  const settled = (data.sent || 0) + (data.failed || 0);
+  const finished = data.total > 0 && settled >= data.total;
+
+  // Nothing left to report on a campaign that has finished on its own.
+  if (finished && !data.stopped) {
+    closeIntervalPopup();
+    return;
+  }
+
+  const popup = getIntervalPopup() || buildIntervalPopup();
+
+  const set = (field, value) => {
+    const el = popup.querySelector(`[data-field="${field}"]`);
+    if (el) el.textContent = value;
+  };
+
+  set('limit', `${rate.limit} emails`);
+  set('interval', `${rate.intervalSeconds} second${rate.intervalSeconds === 1 ? '' : 's'}`);
+  set('sent', data.sent || 0);
+  set('pending', data.pending !== undefined ? data.pending : '—');
+
+  if (data.stopped) {
+    markIntervalPopupStopped();
+    return;
+  }
+
+  const note = popup.querySelector('[data-field="note"]');
+  if (note && data.window) {
+    note.textContent = `Window usage ${data.window.used}/${data.window.limit}.`;
+  }
+
+  startIntervalCountdown(data.window ? data.window.resetInMs : 0);
 }
 
 let statusTimeout = null;
 let isPolling = false;
+let visibilityHookInstalled = false;
+
+/**
+ * Polling cadence.
+ *
+ * This was 3s for a reason that no longer holds. /status used to read its counts
+ * from MongoDB, which BatchLogger only writes on a 2000ms timer, so polling
+ * faster than the flush interval re-read numbers that could not have changed.
+ * /status now reports the worker's live per-email Redis tally, so every poll
+ * carries fresh data and the interval is the whole of the visible latency — which
+ * is what operators were seeing as the Sent count "updating late".
+ *
+ * 1.5s is bounded by request budget rather than by data freshness. /status has its
+ * own 600/min bucket (middleware/rateLimit.js), so one tab costs ~40/min and a
+ * dozen tabs still fit. The incident that made 3s look necessary — status polling
+ * starving POST /send-email — was a shared bucket, and that is what the dedicated
+ * limiter fixed; it is not a reason to keep the interval high.
+ *
+ * The hidden-tab interval was 2s, which billed a background tab almost as much
+ * as a foreground one for information nobody was looking at.
+ */
+const POLL_INTERVAL_SENDING = 1500;
+const POLL_INTERVAL_IDLE = 10000;
+const POLL_INTERVAL_HIDDEN = 30000;
 
 function startStatusPolling() {
   if (isPolling) return;
@@ -222,32 +839,77 @@ function startStatusPolling() {
   }
 
   const runPoll = async () => {
-    if (!isPolling || document.hidden) {
+    if (!isPolling) return;
 
-       statusTimeout = setTimeout(runPoll, 2000);
-       return;
+    // A hidden tab still polls, just rarely, so returning to it shows something
+    // recent rather than a frozen panel. The visibility hook below fetches
+    // immediately on focus, so the long interval costs nothing perceptible.
+    if (document.hidden) {
+      statusTimeout = setTimeout(runPoll, POLL_INTERVAL_HIDDEN);
+      return;
     }
 
     await pollStatus();
 
-    let pollInterval = 2000;
+    // pollStatus() calls stopStatusPolling() once the campaign reaches a
+    // terminal state, so re-check rather than scheduling unconditionally.
+    if (!isPolling) return;
 
-    if (isSending) {
-      pollInterval = 1000;
-    }
-
-    statusTimeout = setTimeout(runPoll, pollInterval);
+    statusTimeout = setTimeout(runPoll, isSending ? POLL_INTERVAL_SENDING : POLL_INTERVAL_IDLE);
   };
 
   runPoll();
 
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && isPolling) {
+  // Registered once per page, not once per campaign. This used to be added
+  // inside startStatusPolling, so every campaign stacked another listener and
+  // focusing the tab fired one runPoll per campaign ever started.
+  if (!visibilityHookInstalled) {
+    visibilityHookInstalled = true;
 
-       clearTimeout(statusTimeout);
-       runPoll();
-    }
-  });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && isPolling) {
+        clearTimeout(statusTimeout);
+        runPoll();
+      }
+    });
+  }
+}
+
+/**
+ * Composes the Results line from a /status payload.
+ *
+ * The distinction this function exists to preserve: a failed *recipient* is not
+ * a failed *campaign*. `lastError` is reported as context on a campaign that is
+ * still running, never as a terminal verdict.
+ */
+function describeCampaign(data) {
+  const total = data.total || 0;
+  const sent = data.sent || 0;
+  const failed = data.failed || 0;
+  const inFlight = data.sending || 0;
+  const settled = sent + failed;
+  const isTerminal = total > 0 && settled >= total;
+
+  const tally = `${sent} sent, ${failed} failed of ${total}`;
+
+  if (isTerminal) {
+    return failed > 0
+      ? `⚠️ Campaign finished — ${tally}. Some emails failed; download the log for details.`
+      : `✅ Campaign complete — ${tally}.`;
+  }
+
+  let line = inFlight > 0
+    ? `📤 Campaign is running — ${tally}, ${inFlight} in queue.`
+    : `⏸️ Campaign is idle — ${tally}. Submit the next batch to continue.`;
+
+  // Appended, not substituted: the campaign is still running and the counters
+  // above are the headline. Previously this string replaced the entire line, so
+  // one failed address looked identical to a dead campaign.
+  if (data.lastError) {
+    line += ` Most recent send error: ${data.lastError}`;
+  }
+
+  return line;
 }
 
 function stopStatusPolling() {
@@ -288,9 +950,19 @@ async function pollStatus() {
         const totalSendingEl = document.getElementById(prefix + 'total-sending');
         if (totalSendingEl) totalSendingEl.textContent = lastLimit;
 
-        const pending = Math.max(0, data.total - (data.sent || 0) - (data.failed || 0));
+        // Server-provided. Computing it here from data.sent reproduced the
+        // server's arithmetic in a second place and guaranteed the two could
+        // disagree; `pending` now comes from the same read as `sent` and
+        // `sending`, so all four counters describe one instant.
         const pendingEl = document.getElementById(prefix + 'pending');
-        if (pendingEl) pendingEl.textContent = pending;
+        if (pendingEl) {
+          const pending = data.pending !== undefined
+            ? data.pending
+            // Older server response: fall back so a cached client against a
+            // not-yet-deployed backend still shows a sane number.
+            : Math.max(0, data.total - (data.sent || 0) - (data.failed || 0));
+          pendingEl.textContent = pending;
+        }
 
         document.getElementById(prefix + 'sent').textContent = data.sent || 0;
 
@@ -299,23 +971,74 @@ async function pollStatus() {
 
       window.currentSessionId = sessionId;
 
-      if ((data.sent + data.failed) >= (data.sentIndex || 0)) {
-        isSending = false;
-
-        if (data.sent + data.failed >= data.total) {
-           stopStatusPolling();
-        }
+      // The server's verdict on whether sending has stopped, which overrides
+      // anything this page believes. Handled before the counters are interpreted so
+      // a stopped campaign cannot be described as running, and handled here rather
+      // than only in the click handler so a stop issued in another tab, or by
+      // another operator, is picked up within one poll.
+      if (data.stopped) {
+        const settledNow = (data.sent || 0) + (data.failed || 0);
+        updateIntervalPopup(data);
+        applyStoppedState(
+          `⏹️ Sending stopped — ${data.sent || 0} sent, ${data.failed || 0} failed of ${data.total || 0}` +
+          `, ${Math.max(0, (data.total || 0) - settledNow)} still pending. ` +
+          'Change Limit/Interval and click Send Email to continue.'
+        );
+        return;
       }
 
-      if (data.lastError) {
-        showError(data.lastError);
-      } else {
+      updateIntervalPopup(data);
 
+      // `sending` is the server's own count of enqueued-but-not-yet-settled work
+      // (sentIndex - sent - failed). Using it directly fixes a first-poll bug in
+      // the previous condition, `(sent + failed) >= (sentIndex || 0)`, which was
+      // trivially 0 >= 0 before the background enqueue had advanced sentIndex —
+      // so every campaign immediately declared itself not-sending and dropped to
+      // the slow poll interval.
+      isSending = (data.sending || 0) > 0;
+
+      const settled = (data.sent || 0) + (data.failed || 0);
+      const reachedTerminalState = data.total > 0 && settled >= data.total;
+
+      showError(describeCampaign(data));
+
+      // The Stop button stays available while the campaign has recipients left,
+      // because that is the whole window in which stopping means anything.
+      setStopControlsVisible(!reachedTerminalState);
+
+      // The rate inputs, though, are locked only while work is actually in flight.
+      // Tying them to "the campaign is unfinished" instead would break the ordinary
+      // unpaced workflow: `limit` is a batch size there, the campaign goes idle
+      // between batches, and re-tuning the limit before submitting the next one is
+      // the intended way to use it. Locking it in that state would leave the
+      // operator with a Send Email button and no way to change what it sends.
+      setRateInputsLocked(isSending);
+
+      if (reachedTerminalState) {
+        // Terminal means every recipient is accounted for. Stop polling rather
+        // than querying a finished campaign forever.
+        isSending = false;
+        stopStatusPolling();
+        closeIntervalPopup();
       }
     }
   } catch (err) {
+    // A single failed poll is transient. Leave the last known good line in place
+    // and try again on the next tick — it must never look like a failed campaign.
     console.error('Status fetch failed:', err);
   }
+}
+
+/**
+ * One status read, outside the polling loop.
+ *
+ * Used after a stop is confirmed so the counters settle on what the in-flight sends
+ * actually finished with, instead of freezing at the instant of the click. It does
+ * not schedule anything, so it cannot restart polling on a stopped campaign.
+ */
+function pollStatusOnce(id) {
+  if (id && !sessionId) sessionId = id;
+  return pollStatus();
 }
 
 function showError(msg) {
@@ -464,12 +1187,92 @@ function updateModeUI() {
 }
 if (testRadio) testRadio.addEventListener('change', updateModeUI);
 if (bulkRadio) bulkRadio.addEventListener('change', updateModeUI);
+
+let campaignResumeChecked = false;
+
+/**
+ * Re-attaches the status poller to a campaign that is already in progress.
+ *
+ * Polling used to start only from the submit success path, so a page reload left
+ * a live campaign with no poller at all: the counters froze at whatever
+ * /files-stats last reported and never moved again. Operators reasonably read a
+ * frozen panel as a stalled campaign and reached for a browser extension to
+ * reload the page every few seconds — which restarted this same dead end while
+ * consuming the rate-limit allowance that campaign submission needed.
+ *
+ * With this, the page recovers its own live view on load. The extension becomes
+ * unnecessary rather than load-bearing.
+ */
+async function resumePollingIfCampaignActive() {
+  if (campaignResumeChecked || isPolling) return;
+
+  const fileIdsField = document.getElementById('file-ids');
+  const raw = fileIdsField ? fileIdsField.value.trim() : '';
+  if (!raw) return;
+
+  const firstId = raw.split(',').map(id => id.trim()).filter(id => id)[0];
+  if (!firstId) return;
+
+  campaignResumeChecked = true;
+
+  try {
+    const res = await fetch(`/status?sessionId=${encodeURIComponent(firstId)}`);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    if (data.total === undefined) return;
+
+    const settled = (data.sent || 0) + (data.failed || 0);
+
+    // Only adopt campaigns with work left. A finished one must not restart
+    // polling, or the page would poll a completed campaign indefinitely.
+    if (!(data.total > 0 && settled < data.total)) return;
+
+    sessionId = firstId;
+
+    // A stopped campaign is adopted for display but not polled: nothing is going to
+    // change until the operator submits again. Reported here so a reload cannot make
+    // a stopped campaign look like a running one — and so the rate inputs come back
+    // unlocked, ready for the new Limit and Interval.
+    if (data.stopped) {
+      window.currentSessionId = firstId;
+      updateIntervalPopup(data);
+      applyStoppedState(
+        `⏹️ This campaign is stopped — ${data.sent || 0} sent, ${data.failed || 0} failed of ` +
+        `${data.total}, ${Math.max(0, data.total - settled)} still pending. ` +
+        'Change Limit/Interval and click Send Email to continue.'
+      );
+      return;
+    }
+
+    isSending = (data.sending || 0) > 0;
+    setStopControlsVisible(true);
+    // Locked only if work is genuinely in flight — same rule as the poller, so a
+    // reload cannot leave the rate fields locked on an idle campaign.
+    setRateInputsLocked(isSending);
+    showError(describeCampaign(data));
+    startStatusPolling();
+  } catch (err) {
+    console.error('Could not check for an in-progress campaign:', err);
+  }
+}
+
 window.addEventListener('DOMContentLoaded', function () {
   updateModeUI();
 
   if (!testRadio.checked && !bulkRadio.checked) {
     testRadio.checked = true;
     updateModeUI();
+  }
+
+  resumePollingIfCampaignActive();
+
+  // form-persistence.js restores the saved draft asynchronously from the server
+  // and dispatches a synthetic change event, so #file-ids is often still empty
+  // at DOMContentLoaded. This catches the value once it lands.
+  const fileIdsField = document.getElementById('file-ids');
+  if (fileIdsField) {
+    fileIdsField.addEventListener('change', () => resumePollingIfCampaignActive());
   }
 });
 
@@ -482,7 +1285,7 @@ const infoBtn = document.getElementById('info');
 if (infoBtn) {
   infoBtn.addEventListener('click', function () {
     showPopup('Info', `
-      <b>Bulk Email Sender - How to Use</b><br><br>
+      <b>Opterite - How to Use</b><br><br>
       <ul>
         <li><b>1. Upload Recipients:</b> Upload a file (.csv, .txt, .xlsx, .xls, .json) containing email addresses. Only valid emails are counted. The total is shown in the status panel. <b>If you select Test mode, file upload is disabled.</b></li>
         <li><b>2. Configure SMTP:</b> Enter your SMTP server details (host, port, user, password). This is required to send emails.</li>

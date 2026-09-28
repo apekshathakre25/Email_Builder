@@ -106,12 +106,70 @@ const emailLogSchema = new mongoose.Schema({
   completedAt: {
     type: Date
   },
+  /**
+   * When the operator stopped the campaign. Cleared when it is started again.
+   *
+   * Recorded separately from `completedAt` because the two mean different things:
+   * a completed campaign reached every recipient, a stopped one was cut short and
+   * usually still has pending recipients the operator may come back for.
+   */
+  stoppedAt: {
+    type: Date
+  },
+  /**
+   * The send rate the campaign is currently configured for, as accepted by the
+   * last submission.
+   *
+   * Persisted because it was previously only attached to individual Bull jobs,
+   * which meant the only way to answer "what rate is this campaign running at?"
+   * was to read a job out of the queue. /status reports these so the interval
+   * popup can show Limit and Interval without the browser having to assume the
+   * form still holds the values that were actually submitted.
+   *
+   * Overwritten on every send, which is what makes a restart honest: stop a
+   * campaign running 35/5s, resubmit at 100/10s, and this says 100/10s.
+   */
+  rateLimit: {
+    limit: {
+      type: Number
+    },
+    intervalSeconds: {
+      type: Number
+    }
+  },
+  /**
+   * Every recipient file this campaign draws from.
+   *
+   * A bulk campaign's sessionId is only the *first* selected file's id, so the
+   * others were previously unrecoverable from the campaign record. Stopping a
+   * campaign needs all of them, to return each file from `processing` to
+   * `uploaded` rather than leaving the extras looking permanently mid-send.
+   */
+  sourceFileIds: {
+    type: [String],
+    default: []
+  },
   status: {
     type: String,
-    enum: ['in_progress', 'completed', 'failed'],
+    // 'stopped' is terminal-but-resumable: the operator halted it and may submit
+    // the remaining recipients later. Kept distinct from 'failed', which means the
+    // sending itself went wrong, and from 'completed', which means nobody is left.
+    enum: ['in_progress', 'completed', 'failed', 'stopped'],
     default: 'in_progress'
   }
 });
+
+/**
+ * Supports the retention sweep in utils/dbCleanup.js, which selects on
+ * { status: { $ne: 'in_progress' }, createdAt: { $lt: cutoff } }.
+ *
+ * status leads because it is the equality-ish predicate and createdAt is the
+ * range, which is the order a compound index can actually serve. Without this
+ * the sweep collection-scans every campaign ever recorded on each run.
+ *
+ * Also serves the default `/logs` listing, which sorts on createdAt.
+ */
+emailLogSchema.index({ status: 1, createdAt: 1 });
 
 emailLogSchema.pre('save', function (next) {
   this.updatedAt = new Date();

@@ -92,7 +92,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
             await sendTransactionalEmail({
                 to: user.email,
                 toName: user.name,
-                subject: 'Your Login OTP - Bulk Email Sender',
+                subject: 'Your Login OTP - Opterite',
                 html: `
                     <!DOCTYPE html>
                     <html lang="en">
@@ -141,7 +141,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                                         <tr>
                                             <td class="header-padding" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); padding: 40px 30px; text-align: center;">
                                                 <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">
-                                                    Bulk Email Sender
+                                                    Opterite
                                                 </h1>
                                                 <p style="color: #e7f1ff; margin: 10px 0 0 0; font-size: 14px;">Secure Login Verification</p>
                                             </td>
@@ -154,7 +154,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                                                 </h2>
 
                                                 <p style="color: #6c757d; line-height: 1.6; margin: 0 0 25px 0; font-size: 15px;">
-                                                    You've requested to log in to your Bulk Email Sender Interface. Please use the One-Time Password (OTP) below to complete your authentication:
+                                                    You've requested to log in to your Opterite Interface. Please use the One-Time Password (OTP) below to complete your authentication:
                                                 </p>
 
                                                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 30px 0;">
@@ -212,7 +212,7 @@ router.post('/send-otp', otpRequestLimiter, async (req, res) => {
                                         <tr>
                                             <td style="background-color: #343a40; padding: 25px 30px; text-align: center;">
                                                 <p style="color: #adb5bd; margin: 0 0 10px 0; font-size: 13px;">
-                                                    © 2026 Bulk Email Sender. All rights reserved.
+                                                    © 2026 Opterite. All rights reserved.
                                                 </p>
                                                 <p style="color: #6c757d; margin: 0; font-size: 12px;">
                                                     This is an automated message, please do not reply to this email.

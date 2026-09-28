@@ -1,0 +1,34 @@
+# Dependencies are installed inside the image, never copied from the host
+# (host node_modules may contain platform-specific binaries).
+node_modules
+npm-debug.log*
+
+# Secrets — inject at runtime with --env-file / compose env_file instead
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# VCS / editor noise
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Runtime artifacts (mounted as volumes at runtime)
+logs
+*.log
+uploads/*
+!uploads/.gitkeep
+
+# Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Build / coverage
+coverage
+dist

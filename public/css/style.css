@@ -30,6 +30,13 @@
   letter-spacing: -0.01em;
 }
 
+.app-topbar__logo {
+  width: 1.75em;
+  height: 1.75em;
+  flex-shrink: 0;
+  display: block;
+}
+
 .app-topbar__spacer {
   flex: 1;
 }
@@ -270,6 +277,39 @@
   color: var(--text-muted);
 }
 
+/* Pairs two related fields (Limit / Interval) on one line.
+   auto-fit is container-driven rather than viewport-driven, which matters here:
+   this form sits in a .workspace__form column that is already half the viewport
+   between 900px and 1500px, so a viewport-only rule would keep the pair
+   side-by-side in a track too narrow for it. The 180px floor makes them collapse
+   whenever the column cannot seat both, and the explicit query below guarantees
+   the stacked layout on phones regardless of container arithmetic. */
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  min-width: 0;
+}
+
+.field-row:last-child {
+  margin-bottom: 0;
+}
+
+/* The row owns the vertical rhythm; nested .field margins would otherwise push
+   the first column down relative to the second, which is :last-child and so has
+   its margin zeroed already. */
+.field-row>.field {
+  margin-bottom: 0;
+}
+
+@media (max-width: 600px) {
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-4);
+  }
+}
+
 .input,
 .textarea,
 select.input {
@@ -306,6 +346,17 @@ select.input {
 
 .input:disabled,
 .textarea:disabled {
+  background-color: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* Read-only shares the disabled appearance because it means the same thing to the
+   operator: not editable right now. It is a separate state because a read-only
+   field still submits its value, which is why the send-rate inputs are locked this
+   way while a campaign runs rather than being disabled. */
+.input[readonly],
+.textarea[readonly] {
   background-color: var(--surface-muted);
   color: var(--text-muted);
   cursor: not-allowed;
@@ -939,6 +990,13 @@ select.input {
   color: var(--brand-500);
 }
 
+/* A destructive dialog's header icon has to match its tone. Without this it
+   inherits the brand colour above, so a "Stop sending?" warning triangle rendered
+   in the same blue as an informational one. */
+.modal__title i.is-danger {
+  color: var(--danger-500);
+}
+
 .modal__close {
   display: inline-flex;
   align-items: center;
@@ -1349,5 +1407,117 @@ fieldset:not(.field-group) button:not(.btn):hover,
   .modal__footer .btn {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Interval status popup
+   --------------------------------------------------------------------------
+   The live panel for a rate-limited campaign: the configured Limit and Interval,
+   progress, a countdown to the next interval, and Stop Sending.
+
+   Docked bottom-right rather than centred and modal. It is a status readout that
+   stays visible for the length of a campaign, and a modal would either block the
+   form behind it or have to be dismissed to use it — while the operator may well
+   want to type a new Limit ready for after the stop.
+
+   Sits below --z-overlay so the existing centred popups (preview, log selection)
+   still come out on top of it.
+   -------------------------------------------------------------------------- */
+
+.interval-popup {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: calc(var(--z-overlay) - 1);
+  width: min(320px, calc(100vw - 2 * var(--sp-4)));
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand-500);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--fs-base);
+  color: var(--text);
+}
+
+.interval-popup--stopped {
+  border-left-color: var(--danger-500);
+}
+
+.interval-popup__title {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-md);
+  line-height: var(--lh-tight);
+}
+
+.interval-popup__close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.interval-popup__close:hover {
+  background-color: var(--surface-sunken);
+  color: var(--text);
+}
+
+.interval-popup__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Two columns: label left, value right. A definition list because that is what
+   this is — labelled readings, not tabular data. */
+.interval-popup__grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-2) var(--sp-3);
+  margin: 0 0 var(--sp-3);
+}
+
+.interval-popup__grid dt {
+  color: var(--text-muted);
+}
+
+.interval-popup__grid dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* The countdown is the one value that changes several times a second, so it gets
+   a monospaced figure width — otherwise the whole row reflows on every tick. */
+.interval-popup__grid dd[data-field="countdown"] {
+  font-family: var(--font-mono);
+}
+
+.interval-popup__note {
+  margin: 0 0 var(--sp-3);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  min-height: 1em;
+}
+
+.interval-popup__stop {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .interval-popup {
+    right: var(--sp-2);
+    left: var(--sp-2);
+    bottom: var(--sp-2);
+    width: auto;
   }
 }

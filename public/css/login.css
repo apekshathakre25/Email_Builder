@@ -1,18 +1,44 @@
+/* ---------------------------------------------------------------------------
+   Opterite — login screen
+   Presentation only. Every selector the markup and /js/login.js depend on is
+   preserved (.alert/.alert-error/.alert-success, .loading, .blob-1/.blob-2,
+   the #submitBtn span + i pair, etc.), so behaviour is unchanged.
+   --------------------------------------------------------------------------- */
+
 :root {
-    --primary-color: #007bff;
-    --primary-dark: #0056b3;
-    --primary-light: #e7f1ff;
-    --success-color: #28a745;
-    --error-color: #dc3545;
-    --bg-color: #f8f9fa;
+    /* Brand ramp, aligned with the Opterite logo */
+    --primary-color: #6366f1;
+    --primary-dark: #4f46e5;
+    --primary-accent: #8b5cf6;
+    --primary-light: #eef0ff;
+    --primary-ring: rgba(99, 102, 241, 0.16);
+
+    --success-color: #16a34a;
+    --error-color: #dc2626;
+
+    --bg-color: #f4f5fa;
     --card-bg: #ffffff;
-    --text-main: #343a40;
-    --text-muted: #6c757d;
-    --border-color: #dee2e6;
-    --radius-lg: 12px;
-    --radius-md: 8px;
-    --shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-    --transition: all 0.3s ease;
+
+    --text-main: #16182b;
+    --text-body: #3f4258;
+    --text-muted: #757a92;
+
+    --border-color: #e4e6f0;
+    --border-strong: #d2d5e4;
+
+    --radius-xl: 22px;
+    --radius-lg: 14px;
+    --radius-md: 12px;
+    --radius-sm: 10px;
+
+    --shadow-card:
+        0 1px 2px rgba(22, 24, 43, 0.04),
+        0 12px 24px -12px rgba(22, 24, 43, 0.12),
+        0 36px 64px -32px rgba(79, 70, 229, 0.18);
+    --shadow-btn: 0 8px 20px -6px rgba(79, 70, 229, 0.5);
+    --shadow-btn-hover: 0 12px 26px -6px rgba(79, 70, 229, 0.55);
+
+    --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -22,51 +48,61 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-main);
-    height: 100vh;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text-body);
+    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 32px 16px;
     position: relative;
+    background-color: var(--bg-color);
+    background-image:
+        radial-gradient(1100px 620px at 12% -12%, rgba(99, 102, 241, 0.18), transparent 62%),
+        radial-gradient(900px 560px at 104% 112%, rgba(139, 92, 246, 0.16), transparent 62%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
 }
 
-/* Background Decoration */
+/* ------------------------------------------------------------------ Backdrop */
+
+/* Sits above the body background but below the card, so the blobs are
+   actually visible (previously z-index:-1 painted them out of sight). */
 .bg-decoration {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
     overflow: hidden;
+    pointer-events: none;
 }
 
 .blob {
     position: absolute;
     border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.4;
-    transition: var(--transition);
+    filter: blur(90px);
+    opacity: 0.55;
+    /* Transform only: /js/login.js writes an inline transform on mousemove. */
+    transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
 }
 
 .blob-1 {
-    width: 400px;
-    height: 400px;
-    background-color: var(--primary-light);
-    top: -100px;
-    right: -100px;
-    animation: move 20s infinite alternate;
+    width: 460px;
+    height: 460px;
+    background: radial-gradient(circle at 30% 30%, #c7d2fe, #a5b4fc 55%, rgba(165, 180, 252, 0) 72%);
+    top: -160px;
+    right: -120px;
+    animation: move 22s infinite alternate ease-in-out;
 }
 
 .blob-2 {
-    width: 300px;
-    height: 300px;
-    background-color: #d1e7ff;
-    bottom: -50px;
-    left: -50px;
-    animation: move 15s infinite alternate-reverse;
+    width: 380px;
+    height: 380px;
+    background: radial-gradient(circle at 65% 35%, #ddd6fe, #c4b5fd 55%, rgba(196, 181, 253, 0) 72%);
+    bottom: -140px;
+    left: -110px;
+    animation: move 17s infinite alternate-reverse ease-in-out;
 }
 
 @keyframes move {
@@ -79,64 +115,114 @@ body {
     }
 }
 
-/* Auth Wrapper */
+/* --------------------------------------------------------------------- Shell */
+
 .auth-wrapper {
     width: 100%;
-    max-width: 550px;
-    padding: 20px;
+    max-width: 480px;
+    position: relative;
     z-index: 10;
 }
 
 .auth-card {
+    position: relative;
+    overflow: hidden;
     background-color: var(--card-bg);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow);
-    padding: 40px;
-    border: 1px solid rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(10px);
+    border: 1px solid rgba(228, 230, 240, 0.9);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+    padding: 40px 38px 32px;
+    animation: cardIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+/* Brand hairline across the top edge */
+.auth-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary-dark), var(--primary-accent) 55%, #c4b5fd);
+}
+
+@keyframes cardIn {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.99);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* -------------------------------------------------------------------- Header */
 
 .auth-header {
     text-align: center;
-    margin-bottom: 35px;
+    margin-bottom: 30px;
 }
 
 .logo-box {
-    width: 64px;
-    height: 64px;
-    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-    border-radius: var(--radius-md);
+    position: relative;
+    width: 72px;
+    height: 72px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 20px;
-    color: white;
-    font-size: 28px;
-    box-shadow: 0 8px 15px rgba(0, 123, 255, 0.3);
+    margin: 0 auto 18px;
+}
+
+/* Soft brand halo behind the mark */
+.logo-box::after {
+    content: '';
+    position: absolute;
+    inset: -14px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.22), transparent 68%);
+    z-index: 0;
+}
+
+.logo-mark {
+    position: relative;
+    z-index: 1;
+    width: 72px;
+    height: 72px;
+    display: block;
+    border-radius: 50%;
+    box-shadow: 0 10px 22px -8px rgba(79, 70, 229, 0.55);
 }
 
 .auth-header h1 {
-    font-size: 24px;
+    font-size: 27px;
+    line-height: 1.2;
     font-weight: 700;
+    letter-spacing: -0.025em;
     margin-bottom: 10px;
     color: var(--text-main);
 }
 
 .auth-header p {
     color: var(--text-muted);
-    margin: 0;
-    font-size: 14px;
+    margin: 0 auto;
+    max-width: 344px;
+    font-size: 13.5px;
+    line-height: 1.6;
 }
 
-/* Alerts */
+/* -------------------------------------------------------------------- Alerts */
+
 .alert {
     border-radius: var(--radius-md);
-    padding: 15px 20px;
-    margin-bottom: 20px;
+    padding: 13px 16px;
+    margin-bottom: 22px;
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 14px;
+    font-size: 13.5px;
+    line-height: 1.5;
     animation: slideDown 0.3s ease-out;
     position: relative;
 }
@@ -154,7 +240,7 @@ body {
 }
 
 .alert i:first-child {
-    font-size: 18px;
+    font-size: 17px;
     flex-shrink: 0;
 }
 
@@ -167,81 +253,90 @@ body {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 5px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
     transition: var(--transition);
     flex-shrink: 0;
+    opacity: 0.6;
+}
+
+.alert .close-btn:hover {
+    opacity: 1;
 }
 
 .alert .close-btn i {
-    font-size: 14px;
+    font-size: 13px;
 }
 
-/* Error Alert variant */
 .alert-error {
-    background: linear-gradient(135deg, #fee 0%, #fdd 100%);
-    border: 1px solid #f5c6cb;
-    border-left: 4px solid #dc3545;
-    color: #721c24;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 3px solid var(--error-color);
+    color: #911b1b;
 }
 
 .alert-error i:first-child {
-    color: #dc3545;
+    color: var(--error-color);
 }
 
 .alert-error .close-btn {
-    color: #721c24;
+    color: #911b1b;
 }
 
 .alert-error .close-btn:hover {
-    background: rgba(220, 53, 69, 0.1);
+    background: rgba(220, 38, 38, 0.1);
 }
 
-/* Success Alert variant */
 .alert-success {
-    background: linear-gradient(135deg, #e6ffed 0%, #d4edda 100%);
-    border: 1px solid #c3e6cb;
-    border-left: 4px solid #28a745;
-    color: #155724;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-left: 3px solid var(--success-color);
+    color: #14532d;
 }
 
 .alert-success i:first-child {
-    color: #28a745;
+    color: var(--success-color);
 }
 
 .alert-success .close-btn {
-    color: #155724;
+    color: #14532d;
 }
 
 .alert-success .close-btn:hover {
-    background: rgba(40, 167, 69, 0.1);
+    background: rgba(22, 163, 74, 0.1);
 }
 
-/* Form Styling */
+/* ---------------------------------------------------------------------- Form */
+
 .form-group {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 }
 
 .form-group label {
     display: block;
-    font-size: 14px;
+    font-size: 11.5px;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
     margin-bottom: 8px;
-    color: var(--text-main);
+    color: var(--text-muted);
 }
 
 .form-group label i {
     margin-right: 6px;
     color: var(--primary-color);
+    font-size: 12px;
 }
 
 .select-wrapper,
 .input-wrapper {
     position: relative;
     flex-grow: 1;
+    min-width: 0;
 }
 
 .input-group {
@@ -250,60 +345,49 @@ body {
     align-items: center;
 }
 
-.btn-send-otp {
-    padding: 12px 16px;
-    background-color: var(--primary-light);
-    color: var(--primary-color);
-    border: 1px solid var(--primary-color);
-    border-radius: var(--radius-md);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 100px;
-}
-
-.btn-send-otp:hover {
-    background-color: var(--primary-color);
-    color: white;
-}
-
-.btn-send-otp:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background-color: var(--border-color);
-    color: var(--text-muted);
-    border-color: var(--border-color);
-}
-
-.btn-send-otp.loading {
-    pointer-events: none;
-}
-
 select,
 input {
     width: 100%;
-    padding: 12px 16px;
-    padding-right: 40px;
-    font-size: 15px;
+    padding: 13px 44px 13px 15px;
+    font-size: 14.5px;
     font-family: inherit;
-    border: 2px solid var(--border-color);
+    font-weight: 500;
+    border: 1.5px solid var(--border-color);
     border-radius: var(--radius-md);
-    background-color: #fff;
+    background-color: #fbfbfe;
     color: var(--text-main);
     transition: var(--transition);
     appearance: none;
     outline: none;
 }
 
+select:hover:not(:focus),
+input:hover:not(:focus) {
+    border-color: var(--border-strong);
+}
+
 select:focus,
 input:focus {
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px var(--primary-light);
+    background-color: #fff;
+    box-shadow: 0 0 0 4px var(--primary-ring);
+}
+
+input::placeholder {
+    color: #a3a8bd;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+select:invalid,
+select option[disabled] {
+    color: #a3a8bd;
+}
+
+/* OTP reads as a code, not prose */
+#otp {
+    letter-spacing: 0.12em;
+    font-variant-numeric: tabular-nums;
 }
 
 .select-icon,
@@ -312,112 +396,254 @@ input:focus {
     right: 15px;
     top: 50%;
     transform: translateY(-50%);
-    color: var(--text-muted);
+    color: #9aa0b8;
     pointer-events: none;
-    font-size: 14px;
+    font-size: 13px;
+    transition: var(--transition);
 }
 
-/* Button Styling */
+.select-wrapper:focus-within .select-icon,
+.input-wrapper:focus-within .input-icon {
+    color: var(--primary-color);
+}
+
+/* ------------------------------------------------------------------- Buttons */
+
+.btn-send-otp {
+    padding: 13px 18px;
+    background-color: var(--primary-light);
+    color: var(--primary-dark);
+    border: 1.5px solid #d6dafe;
+    border-radius: var(--radius-md);
+    font-size: 13.5px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 108px;
+}
+
+.btn-send-otp:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 6px 14px -6px rgba(99, 102, 241, 0.6);
+}
+
+.btn-send-otp:active {
+    transform: translateY(1px);
+}
+
+.btn-send-otp:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    background-color: #f1f2f7;
+    color: var(--text-muted);
+    border-color: var(--border-color);
+    box-shadow: none;
+    transform: none;
+}
+
+.btn-send-otp.loading {
+    pointer-events: none;
+}
+
 .btn-login {
+    position: relative;
+    overflow: hidden;
     width: 100%;
+    margin-top: 4px;
     padding: 14px;
-    background: linear-gradient(to right, var(--primary-color), var(--primary-dark));
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary-accent));
     color: white;
     border: none;
     border-radius: var(--radius-md);
-    font-size: 16px;
+    font-size: 15px;
+    font-family: inherit;
     font-weight: 600;
+    letter-spacing: 0.01em;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
     transition: var(--transition);
-    box-shadow: 0 4px 10px rgba(0, 123, 255, 0.2);
+    box-shadow: var(--shadow-btn);
+}
+
+/* Sheen sweep on hover */
+.btn-login::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -120%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+    transform: skewX(-20deg);
+    transition: left 0.6s ease;
 }
 
 .btn-login:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(0, 123, 255, 0.3);
+    box-shadow: var(--shadow-btn-hover);
+}
+
+.btn-login:hover::after {
+    left: 130%;
 }
 
 .btn-login:active {
     transform: translateY(0);
 }
 
+.btn-login i {
+    font-size: 13px;
+    transition: transform 0.25s ease;
+}
+
+.btn-login:hover i {
+    transform: translateX(3px);
+}
+
 .btn-login.loading {
-    opacity: 0.8;
+    opacity: 0.85;
     pointer-events: none;
 }
 
-/* Divider */
+.btn-login.loading::after {
+    display: none;
+}
+
+/* ------------------------------------------------------------------- Divider */
+
 .divider {
     display: flex;
     align-items: center;
     text-align: center;
-    margin: 25px 0;
-    color: var(--text-muted);
-    font-size: 13px;
-    font-weight: 500;
+    margin: 24px 0;
+    color: #9aa0b8;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
 }
 
 .divider::before,
 .divider::after {
     content: '';
     flex: 1;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .divider span {
-    padding: 0 15px;
+    padding: 0 14px;
 }
 
-/* Google Sign-in Button */
+/* -------------------------------------------------------------------- Google */
+
 .btn-google {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
     width: 100%;
-    padding: 14px;
-    background: white;
-    color: #444;
-    border: 1px solid #dadce0;
+    padding: 13px;
+    background: #fff;
+    color: #33364d;
+    border: 1.5px solid var(--border-color);
     border-radius: var(--radius-md);
-    font-size: 15px;
-    font-weight: 500;
+    font-size: 14.5px;
+    font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
     text-decoration: none;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .btn-google:hover {
-    background: #f8f9fa;
-    border-color: #c6c6c6;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    background: #fafbff;
+    border-color: var(--border-strong);
+    box-shadow: 0 6px 16px -10px rgba(22, 24, 43, 0.4);
+    transform: translateY(-1px);
 }
 
 .btn-google:active {
-    background: #eeeeee;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    transform: translateY(0);
+    background: #f4f5fa;
 }
 
 .btn-google svg {
     flex-shrink: 0;
 }
 
-/* Footer */
+/* -------------------------------------------------------------------- Footer */
+
 .auth-footer {
-    margin-top: 30px;
+    margin-top: 26px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
     text-align: center;
-    font-size: 12px;
-    color: var(--text-muted);
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: #8f95ab;
 }
 
-/* Responsive */
-@media (max-width: 480px) {
+.auth-footer a {
+    color: var(--primary-dark);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+/* ------------------------------------------------------------- Accessibility */
+
+:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+select:focus-visible,
+input:focus-visible {
+    outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* --------------------------------------------------------------- Responsive */
+
+@media (max-width: 520px) {
     .auth-card {
-        padding: 30px 20px;
+        padding: 32px 22px 26px;
+        border-radius: 18px;
+    }
+
+    .auth-header h1 {
+        font-size: 23px;
+    }
+
+    .input-group {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .btn-send-otp {
+        width: 100%;
     }
 }

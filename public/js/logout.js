@@ -103,6 +103,14 @@ function initLogout() {
       const data = await response.json();
 
       if (data.success) {
+        // The campaign draft lives in this tab's sessionStorage, which outlives a
+        // logout. form-persistence.js also stamps it with the operator's email and
+        // refuses to restore someone else's, but dropping it here means the data is
+        // gone rather than merely unread.
+        if (window.FormPersistence && typeof window.FormPersistence.clear === 'function') {
+          window.FormPersistence.clear();
+        }
+
         window.location.href = '/';
         return;
       }

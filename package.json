@@ -1,14 +1,14 @@
 {
-  "name": "bulk-email-sender",
+  "name": "opterite",
   "version": "1.0.0",
-  "description": "A bulk email sender application with file upload, SMTP configuration, and real-time status tracking",
+  "description": "Opterite — a bulk email platform with file upload, SMTP configuration, and real-time status tracking",
   "main": "app.js",
   "scripts": {
     "start": "dotenvx run -- concurrently \"node app.js\" \"node workprocess/mailer.js\"",
     "dev": "dotenvx run -- concurrently \"node app.js\" \"node workprocess/mailer.js\"",
     "app": "dotenvx run -- node app.js",
     "worker": "dotenvx run -- node workprocess/mailer.js",
-    "test": "echo \"No tests specified - skipping tests\" && exit 0"
+    "test": "node --test --test-force-exit --test-concurrency=1 \"tests/**/*.test.js\""
   },
   "keywords": [
     "email",
@@ -50,5 +50,9 @@
     "systeminformation": "^5.30.7",
     "uuid": "^10.0.0",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "jsdom": "25.0.1",
+    "mongodb-memory-server": "^10.1.4"
   }
 }

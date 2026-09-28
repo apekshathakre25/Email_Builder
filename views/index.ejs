@@ -14,11 +14,15 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
 
-<body>
+<!-- data-user-email lets public/js/form-persistence.js stamp the tab's saved draft
+     with the operator it belongs to. sessionStorage is scoped to the tab, not to
+     the account, and survives a logout in that tab, so without this the next
+     person to sign in here would inherit the previous operator's SMTP settings. -->
+<body data-user-email="<%= user ? user.email : '' %>">
 
   <header class="app-topbar">
     <span class="app-topbar__brand">
-      <i class="fa-solid fa-paper-plane"></i> Bulk Email Sender
+      <img src="/images/logo.svg" alt="" class="app-topbar__logo" /> Opterite
     </span>
 
     <span class="app-topbar__spacer"></span>
@@ -43,7 +47,8 @@
 
     <div class="workspace">
 
-      <form id="email-form" action="/send-email" method="post" class="workspace__form">
+      <form id="email-form" action="/send-email" method="post" class="workspace__form"
+        autocomplete="off">
 
         <div class="workspace__col">
 
@@ -62,16 +67,23 @@
               <input class="input" type="text" id="smtp-port" name="smtp-port" placeholder="Enter SMTP Port" />
             </div>
 
+            <!-- autocomplete="off" here and autocomplete="new-password" below stop the
+                 browser's password manager treating this pair as a login form. Without
+                 them Chromium fires a trusted focus/input/change on the password field
+                 on page load and injects a generated password: that value was then
+                 saved as the operator's SMTP credential and submitted to /send-email,
+                 so sending failed authentication with a password nobody had typed. -->
             <div class="field">
               <label class="field__label" for="smtp-user">SMTP User</label>
-              <input class="input" type="text" id="smtp-user" name="smtp-user" placeholder="Enter SMTP User" />
+              <input class="input" type="text" id="smtp-user" name="smtp-user" autocomplete="off"
+                placeholder="Enter SMTP User" />
             </div>
 
             <div class="field">
               <label class="field__label" for="smtp-pass">SMTP Password</label>
               <div class="input-group">
                 <input class="input" type="password" id="smtp-pass" name="smtp-pass"
-                  placeholder="Enter SMTP Password" />
+                  autocomplete="new-password" placeholder="Enter SMTP Password" />
                 <button class="input-group__addon" type="button" id="toggle-smtp-pass" tabindex="-1"
                   aria-label="Show or hide password">
                   <i id="smtp-pass-eye" class="fa-solid fa-eye"></i>
@@ -249,14 +261,47 @@
                 placeholder="e.g., <[[timestamp]]-[[bigchar(6)]]-[[num(6)]]@{{Domain}}>" />
             </div>
 
-            <div class="field">
-              <label class="field__label" for="limit">Limit</label>
-              <input class="input" type="number" id="limit" name="limit" placeholder="Enter Limit" />
+            <div class="field-row">
+              <div class="field">
+                <label class="field__label" for="limit">Limit</label>
+                <input class="input" type="number" id="limit" name="limit" placeholder="e.g., 35" min="1"
+                  max="1000000" step="1" inputmode="numeric" />
+                <span class="field__hint">Maximum emails per interval.</span>
+              </div>
+
+              <!-- Caps ONE Send Email action, independent of the rate above. Left empty
+                   it behaves exactly as before this field existed: a paced campaign
+                   releases everything remaining, an unpaced one releases `Limit`. -->
+              <div class="field">
+                <label class="field__label" for="limit-to-send">Limit to Send</label>
+                <input class="input" type="number" id="limit-to-send" name="limit-to-send"
+                  placeholder="e.g., 30000" min="1" max="10000000" step="1" inputmode="numeric" />
+                <span class="field__hint">Maximum emails to send per Send Email action.</span>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="interval-seconds">Interval (seconds)</label>
+                <input class="input" type="number" id="interval-seconds" name="interval-seconds" placeholder="e.g., 5"
+                  min="0.1" max="3600" step="any" inputmode="decimal" />
+                <span class="field__hint">Time window for the limit.</span>
+              </div>
             </div>
 
             <div class="btn-row">
-              <button type="submit" class="btn btn--primary">
+              <button type="submit" id="send-email" class="btn btn--primary">
                 <i class="fa-solid fa-paper-plane"></i> Send Email
+              </button>
+              <!--
+                Stop Sending. One of two entry points to the SAME operation — the
+                other is inside the interval popup — and both post to /stop-sending.
+                There is no separate "stop the interval": stopping the interval is
+                stopping the campaign.
+
+                type="button" so it never submits the form. Hidden until there is a
+                campaign to stop, which the poller controls.
+              -->
+              <button type="button" id="stop-sending" class="btn btn--danger" hidden>
+                <i class="fa-solid fa-circle-stop"></i> Stop Sending
               </button>
               <button type="button" id="preview-html" class="btn btn--secondary">
                 <i class="fa-solid fa-eye"></i> Preview Message/HTML
@@ -336,11 +381,17 @@
 
   </main>
 
+  <!-- Loaded before recipents-upload.js, which uses window.ConfirmDialog for the
+       Stop Sending confirmation. -->
+  <script src="/js/confirm-dialog.js"></script>
   <script src="/js/logout.js"></script>
   <script src="/js/html-preview.js"></script>
   <script src="/js/form-persistence.js"></script>
   <script src="/js/message-id-help.js"></script>
   <script src="/js/system-health.js"></script>
+  <!-- Loaded before recipents-upload.js, whose submit handler awaits
+       window.CampaignSequencer.requestSend() to take its turn in the send queue. -->
+  <script src="/js/campaign-sequencer.js"></script>
   <script src="/js/recipents-upload.js"></script>
   <script src="/js/imap-checker.js"></script>
   <script src="/js/keep-alive.js"></script>

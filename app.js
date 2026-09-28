@@ -18,14 +18,16 @@ const helmet = require('helmet');
 const path = require('path');
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
-const { globalLimiter } = require('./middleware/rateLimit');
+const { globalLimiter, sendLimiter, monitoringLimiter } = require('./middleware/rateLimit');
 const sendEmailsRouter = require('./routes/sendemails');
+const campaignQueueRouter = require('./routes/campaignQueue');
 const systemHealthRouter = require('./routes/system-health');
 const imapRouter = require('./routes/imap');
 const authRouter = require('./routes/auth');
 const apiRouter = require('./routes/api');
 const mongoose = require('mongoose');
 const connectMongoDB = require('./config/mongodb');
+const { startCleanupScheduler, stopCleanupScheduler } = require('./utils/dbCleanup');
 const { authenticateToken, redirectIfAuthenticated } = require('./middleware/auth');
 const passport = require('passport');
 
@@ -103,6 +105,23 @@ app.use(cookieParser());
 
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Dedicated rate-limit buckets, mounted ahead of the global backstop so these
+// paths draw from their own allowance instead of a shared one.
+//
+// This ordering is the fix for the stalled-campaign incident: monitoring traffic
+// used to exhaust the same bucket POST /send-email needed, so heavy /status
+// polling produced 429s on send and sending stopped until the window rolled
+// over. Separate buckets make that impossible — /status can only ever starve
+// /status.
+//
+// globalLimiter skips exactly these paths (DEDICATED_LIMITER_PATHS in
+// middleware/rateLimit.js), so every request is still counted by one limiter and
+// nothing is left unprotected.
+app.use('/send-email', sendLimiter);
+app.use('/status', monitoringLimiter);
+app.use('/api/system-health', monitoringLimiter);
+
 app.use(globalLimiter);
 
 
@@ -110,6 +129,16 @@ app.use(passport.initialize());
 
 
 connectMongoDB();
+
+
+// Retention sweep for disposable data (campaign logs, per-recipient outcomes,
+// inbox tests, spent recipient files). Driven entirely by DB_CLEANUP_DAYS.
+//
+// Lives in the web process rather than the worker because the workers are
+// throughput-critical and far more numerous. It waits for the MongoDB handshake
+// internally, and coordinates through a Redis lock so only one of the PM2
+// cluster instances actually sweeps.
+startCleanupScheduler();
 
 
 app.set('view engine', 'ejs');
@@ -142,9 +171,13 @@ app.use('/', authRouter);
 
 
 app.get('/interface', authenticateToken, (req, res) => {
-  res.render('index', { title: 'Bulk Email Sender', user: req.user });
+  res.render('index', { title: 'Opterite', user: req.user });
 });
 app.use('/', authenticateToken, sendEmailsRouter);
+// Sequences one operator's campaigns so two tabs cannot send at once. Mounted after
+// sendEmailsRouter because it imports from it, and behind authenticateToken because
+// the lane is scoped to req.user.email.
+app.use('/', authenticateToken, campaignQueueRouter);
 app.use('/', authenticateToken, systemHealthRouter);
 app.use('/imap', authenticateToken, imapRouter);
 app.use('/', authenticateToken, apiRouter);
@@ -220,6 +253,11 @@ async function shutdown(signal) {
   shuttingDown = true;
 
   console.log(`📴 Received ${signal}, draining connections…`);
+
+  // Stop scheduling new sweeps. An in-flight sweep is left to finish against the
+  // still-open Mongo connection; its Redis lock expires on its own if the
+  // process dies mid-run, so the next boot is not blocked.
+  stopCleanupScheduler();
 
   const forceExit = setTimeout(() => {
     console.error('Shutdown timed out; forcing exit.');
