@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>
+    <%= title %>
+  </title>
+  <link rel="icon" href="/images/favicon.ico" />
+  <link rel="stylesheet" href="/css/tokens.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/system-health.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+</head>
+
+<!-- data-user-email lets public/js/form-persistence.js stamp the tab's saved draft
+     with the operator it belongs to. sessionStorage is scoped to the tab, not to
+     the account, and survives a logout in that tab, so without this the next
+     person to sign in here would inherit the previous operator's SMTP settings. -->
+<body data-user-email="<%= user ? user.email : '' %>">
+
+  <header class="app-topbar">
+    <span class="app-topbar__brand">
+      <img src="/images/logo.svg" alt="" class="app-topbar__logo" /> Opterite
+    </span>
+
+    <span class="app-topbar__spacer"></span>
+
+    <span class="app-topbar__user">
+      <span class="app-topbar__name">
+        <%= user ? user.name : 'User' %>
+      </span>
+      <span class="app-topbar__email">
+        <%= user ? user.email : '' %>
+      </span>
+    </span>
+
+    <button type="button" id="logout-btn" class="btn btn--danger btn--sm">
+      <i class="fa-solid fa-sign-out-alt"></i> Logout
+    </button>
+  </header>
+
+  <main class="container">
+
+    <div id="system-health-placeholder"></div>
+
+    <div class="workspace">
+
+      <form id="email-form" action="/send-email" method="post" class="workspace__form"
+        autocomplete="off">
+
+        <div class="workspace__col">
+
+          <fieldset class="field-group">
+            <legend class="field-group__title">
+              <i class="fa-solid fa-server"></i> SMTP Credentials
+            </legend>
+
+            <div class="field">
+              <label class="field__label" for="smtp-host">SMTP Hostname or IP Address</label>
+              <input class="input" type="text" id="smtp-host" name="smtp-host" placeholder="Enter SMTP Host" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-port">SMTP Port</label>
+              <input class="input" type="text" id="smtp-port" name="smtp-port" placeholder="Enter SMTP Port" />
+            </div>
+
+            <!-- autocomplete="off" here and autocomplete="new-password" below stop the
+                 browser's password manager treating this pair as a login form. Without
+                 them Chromium fires a trusted focus/input/change on the password field
+                 on page load and injects a generated password: that value was then
+                 saved as the operator's SMTP credential and submitted to /send-email,
+                 so sending failed authentication with a password nobody had typed. -->
+            <div class="field">
+              <label class="field__label" for="smtp-user">SMTP User</label>
+              <input class="input" type="text" id="smtp-user" name="smtp-user" autocomplete="off"
+                placeholder="Enter SMTP User" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-pass">SMTP Password</label>
+              <div class="input-group">
+                <input class="input" type="password" id="smtp-pass" name="smtp-pass"
+                  autocomplete="new-password" placeholder="Enter SMTP Password" />
+                <button class="input-group__addon" type="button" id="toggle-smtp-pass" tabindex="-1"
+                  aria-label="Show or hide password">
+                  <i id="smtp-pass-eye" class="fa-solid fa-eye"></i>
+                </button>
+              </div>
+              <span class="field__hint" id="smtp-pass-hint" role="status" aria-live="polite"></span>
+            </div>
+          </fieldset>
+
+          <section class="panel panel--test" id="test-status">
+            <div class="panel__header">
+              <h2 class="panel__title"><i class="fa-solid fa-flask"></i> Test Mode Live Status</h2>
+            </div>
+            <div class="panel__body">
+              <div class="stat-list">
+                <p class="stat">
+                  <i class="fa-solid fa-paper-plane"></i>
+                  <span class="stat__label">Total Sent</span>
+                  <span class="stat__value" id="test-sent">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <span class="stat__label">Total Failed</span>
+                  <span class="stat__value" id="test-failed">0</span>
+                </p>
+              </div>
+              <div class="btn-row">
+                <button type="button" id="refresh-test-stats" class="btn btn--success btn--sm">
+                  <i class="fa-solid fa-sync-alt"></i> Refresh Current status
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel panel--bulk" id="bulk-status" style="display: none;">
+            <div class="panel__header">
+              <h2 class="panel__title"><i class="fa-solid fa-chart-line"></i> Bulk Mode Live Status</h2>
+            </div>
+            <div class="panel__body">
+              <div class="stat-list">
+                <p class="stat">
+                  <i class="fa-solid fa-list"></i>
+                  <span class="stat__label">Total</span>
+                  <span class="stat__value" id="bulk-total">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-clock"></i>
+                  <span class="stat__label">Queue</span>
+                  <span class="stat__value" id="bulk-queue">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-swatchbook"></i>
+                  <span class="stat__label">Limit</span>
+                  <span class="stat__value" id="bulk-total-sending">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-hourglass-half"></i>
+                  <span class="stat__label">Pending</span>
+                  <span class="stat__value" id="bulk-pending">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-paper-plane"></i>
+                  <span class="stat__label">Total Sent</span>
+                  <span class="stat__value" id="bulk-sent">0</span>
+                </p>
+                <p class="stat">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <span class="stat__label">Total Failed</span>
+                  <span class="stat__value" id="bulk-failed">0</span>
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <p class="results-line">
+            <i class="fa-solid fa-bug"></i>
+            <span>Results: <span class="results-line__value" id="errors"></span></span>
+          </p>
+
+        </div>
+
+        <div class="workspace__col">
+
+          <fieldset class="field-group">
+            <legend class="field-group__title">
+              <i class="fa-solid fa-envelope"></i> Email Configuration
+            </legend>
+
+            <div class="field">
+              <label class="field__label" for="custom-headers">Custom Headers (Optional)</label>
+              <textarea class="textarea" id="custom-headers" name="custom-headers"
+                placeholder="Enter custom headers"></textarea>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="inbox-pattern-search">Inbox Pattern</label>
+              <input class="input" type="text" id="inbox-pattern-search" list="inbox-pattern-options"
+                value="Default (existing behavior)" autocomplete="off" disabled
+                placeholder="Loading patterns…" aria-describedby="inbox-pattern-status" />
+              <datalist id="inbox-pattern-options"></datalist>
+              <input type="hidden" id="inbox-pattern-id" name="inbox-pattern-id" value="" />
+              <span class="field__hint" id="inbox-pattern-status" role="status" aria-live="polite">
+                Loading Inbox Patterns…
+              </span>
+              <button type="button" id="inbox-pattern-retry" class="btn btn--ghost btn--sm" hidden>
+                <i class="fa-solid fa-rotate-right"></i> Retry
+              </button>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-from-email">From Email (SMTP Authentication)</label>
+              <input class="input" type="text" id="smtp-from-email" name="smtp-from-email"
+                placeholder="Enter SMTP From Email (for authentication)" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="subject">Subject</label>
+              <input class="input" type="text" id="subject" name="subject" placeholder="Enter Subject" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="smtp-from-name">From Name</label>
+              <input class="input" type="text" id="smtp-from-name" name="smtp-from-name"
+                placeholder="Enter SMTP From Name" />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="test-recp">Test Recipients (Only for Test)</label>
+              <textarea class="textarea" id="test-recp" name="test-recp" placeholder="Enter Test Recipients"></textarea>
+            </div>
+
+            <div class="choice-row">
+              <div class="choice-set">
+                <span class="choice-set__legend">Bulk or test</span>
+                <div class="choice-set__options">
+                  <span class="choice">
+                    <input type="radio" id="bulk" name="test-bulk" value="Bulk" checked />
+                    <label class="choice__label" for="bulk">Bulk</label>
+                  </span>
+                  <span class="choice">
+                    <input type="radio" id="test" name="test-bulk" value="Test" />
+                    <label class="choice__label" for="test">Test</label>
+                  </span>
+                </div>
+              </div>
+
+              <div class="checkbox-field">
+                <input type="checkbox" id="auto-imap-test" name="auto-imap-test" disabled />
+                <label class="checkbox-field__label" for="auto-imap-test">
+                  <i class="fa-solid fa-robot"></i> Auto IMAP Test
+                </label>
+              </div>
+            </div>
+
+            <div class="choice-set field">
+              <span class="choice-set__legend">Message Type</span>
+              <div class="choice-set__options">
+                <span class="choice">
+                  <input type="radio" id="plain" name="plain-html" value="Plain" />
+                  <label class="choice__label" for="plain">Plain</label>
+                </span>
+                <span class="choice">
+                  <input type="radio" id="html" name="plain-html" value="HTML" />
+                  <label class="choice__label" for="html">HTML</label>
+                </span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="message">Message/HTML</label>
+              <textarea class="textarea textarea--tall" id="message" name="message" placeholder="Enter Message"
+                rows="4"></textarea>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="file-ids">File IDs (Required for Bulk)</label>
+              <input class="input" type="text" id="file-ids" name="file-ids"
+                placeholder="e.g., session1,session2,session3" />
+              <span class="field__hint">Comma-separated. Required for bulk campaigns.</span>
+            </div>
+
+            <div class="field">
+              <label class="field__label field__label--row" for="custom-message-id">
+                Custom Message-ID (Optional)
+                <button type="button" id="message-id-help" class="btn btn--ghost btn--sm">
+                  <i class="fa-solid fa-circle-info"></i> Info
+                </button>
+              </label>
+              <input class="input" type="text" id="custom-message-id" name="custom-message-id"
+                placeholder="e.g., <[[timestamp]]-[[bigchar(6)]]-[[num(6)]]@{{Domain}}>" />
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label class="field__label" for="limit">Limit</label>
+                <input class="input" type="number" id="limit" name="limit" placeholder="e.g., 35" min="1"
+                  max="1000000" step="1" inputmode="numeric" />
+                <span class="field__hint">Maximum emails per interval.</span>
+              </div>
+
+              <!-- Caps ONE Send Email action, independent of the rate above. Left empty
+                   it behaves exactly as before this field existed: a paced campaign
+                   releases everything remaining, an unpaced one releases `Limit`. -->
+              <div class="field">
+                <label class="field__label" for="limit-to-send">Limit to Send</label>
+                <input class="input" type="number" id="limit-to-send" name="limit-to-send"
+                  placeholder="e.g., 30000" min="1" max="10000000" step="1" inputmode="numeric" />
+                <span class="field__hint">Maximum emails to send per Send Email action.</span>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="interval-seconds">Interval (seconds)</label>
+                <input class="input" type="number" id="interval-seconds" name="interval-seconds" placeholder="e.g., 5"
+                  min="0.1" max="3600" step="any" inputmode="decimal" />
+                <span class="field__hint">Time window for the limit.</span>
+              </div>
+            </div>
+
+            <div class="btn-row">
+              <button type="submit" id="send-email" class="btn btn--primary">
+                <i class="fa-solid fa-paper-plane"></i> Send Email
+              </button>
+              <!--
+                Stop Sending. One of two entry points to the SAME operation — the
+                other is inside the interval popup — and both post to /stop-sending.
+                There is no separate "stop the interval": stopping the interval is
+                stopping the campaign.
+
+                type="button" so it never submits the form. Hidden until there is a
+                campaign to stop, which the poller controls.
+              -->
+              <button type="button" id="stop-sending" class="btn btn--danger" hidden>
+                <i class="fa-solid fa-circle-stop"></i> Stop Sending
+              </button>
+              <button type="button" id="preview-html" class="btn btn--secondary">
+                <i class="fa-solid fa-eye"></i> Preview Message/HTML
+              </button>
+              <button type="button" id="info" class="btn btn--secondary">
+                <i class="fa-solid fa-circle-info"></i> Info
+              </button>
+            </div>
+          </fieldset>
+
+        </div>
+
+      </form>
+
+      <aside class="workspace__aside">
+
+        <section class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="fa-solid fa-chart-bar"></i> Test Results</h2>
+            <span class="badge badge--neutral" id="test-mode-indicator">Manual Testing</span>
+          </div>
+
+          <div class="panel__body">
+            <div class="toolbar">
+              <button type="button" id="refresh-test-results" class="btn btn--info btn--sm">
+                <i class="fa-solid fa-sync-alt"></i> Refresh
+              </button>
+              <button type="button" id="clear-test-results" class="btn btn--danger btn--sm">
+                <i class="fa-solid fa-trash"></i> Delete All
+              </button>
+              <a href="/imapac" target="_blank" rel="noopener" class="btn btn--accent btn--sm">
+                <i class="fa-solid fa-user-gear"></i> Manage IMAP Accounts
+              </a>
+            </div>
+
+            <div class="table-scroll" id="test-results-container">
+              <table class="table" id="test-results-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Test Email</th>
+                    <th scope="col">IP</th>
+                    <th scope="col" class="is-center">Status</th>
+                    <th scope="col">Date</th>
+                    <th scope="col" class="is-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="test-results-body">
+                  <tr>
+                    <td colspan="5">
+                      <div class="empty-state">
+                        <i class="fa-solid fa-inbox"></i>
+                        No test results available. Send test emails to see results here.
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <div class="callout" id="current-email-display" style="display: none;">
+          <div class="callout__row">
+            <p class="callout__text">
+              <i class="fa-solid fa-envelope"></i>
+              <span>Checking emails for: <span class="callout__value" id="current-email-text"></span></span>
+            </p>
+            <button type="button" id="check-both" class="btn btn--accent btn--sm">
+              <i class="fa-solid fa-sync-alt"></i> Check Manually
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+
+  </main>
+
+  <!-- Loaded before recipents-upload.js, which uses window.ConfirmDialog for the
+       Stop Sending confirmation. -->
+  <script src="/js/confirm-dialog.js"></script>
+  <script src="/js/logout.js"></script>
+  <script src="/js/html-preview.js"></script>
+  <script src="/js/form-persistence.js"></script>
+  <script src="/js/inbox-pattern.js"></script>
+  <script src="/js/message-id-help.js"></script>
+  <script src="/js/system-health.js"></script>
+  <!-- Loaded before recipents-upload.js, whose submit handler awaits
+       window.CampaignSequencer.requestSend() to take its turn in the send queue. -->
+  <script src="/js/campaign-sequencer.js"></script>
+  <script src="/js/recipents-upload.js"></script>
+  <script src="/js/imap-checker.js"></script>
+  <script src="/js/keep-alive.js"></script>
+</body>
+
+</html>
