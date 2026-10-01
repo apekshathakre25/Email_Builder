@@ -1,0 +1,56 @@
+# Reverse proxy / TLS terminator for Opterite.
+#
+# Caddy obtains and renews Let's Encrypt certificates automatically, which
+# replaces the host certbot setup app.js still probes for
+# (/var/www/certbot/.well-known/acme-challenge). Nothing needs to be mounted
+# there any more: Caddy answers the ACME challenge itself on :80.
+#
+# SITE_ADDRESS comes from .env via docker-compose.prod.yml. Multiple hostnames
+# are comma-separated and both get certificates:
+#   production → opterite.com, www.opterite.com   (HTTP auto-redirects to HTTPS)
+#   local test → :80                              (plain HTTP, no ACME)
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	# Uploads are capped at MAX_UPLOAD_MB (25) per file inside the app. Keeping
+	# the proxy ceiling above that lets the app's own 413 handler answer with a
+	# useful message instead of Caddy cutting the connection first.
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy {
+		# `dynamic a` re-resolves the `web` service name on the compose network,
+		# so `--scale web=N` is load balanced with no config change. A static
+		# `reverse_proxy web:3000` resolves once at startup and would pin all
+		# traffic to whichever replica answered first.
+		dynamic a {
+			name web
+			port 3000
+			refresh 10s
+		}
+
+		lb_policy least_conn
+
+		# Active health checks (health_uri) are documented as not running for
+		# dynamic upstreams, so failure detection here is passive: a replica
+		# that errors is skipped for fail_duration, and the request is retried
+		# against another one. lb_try_duration also holds requests briefly
+		# during a redeploy instead of returning 502.
+		fail_duration 10s
+		max_fails 2
+		lb_retries 2
+		lb_try_duration 5s
+	}
+
+	# Response compression is already handled by compression() in app.js.
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20MB
+			roll_keep 5
+		}
+	}
+}

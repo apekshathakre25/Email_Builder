@@ -1,0 +1,40 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Local overrides of .env.development / .env.production. These are the files that
+# may legitimately hold a per-developer API origin, so they stay out of git.
+.env
+.env.*.local
+
+# Re-included on purpose. The repository-root .gitignore excludes `.env.*` at any
+# depth as a safety net against committing secrets, which also caught these two —
+# and they hold no secrets. Everything in a VITE_-prefixed variable is compiled
+# into the bundle and readable by any visitor, so there is nothing here to protect.
+#
+# .env.development in particular has to be committed: without it a fresh clone has
+# no VITE_API_BASE_URL, every request goes same-origin to the Vite dev server, and
+# `npm run dev` is broken until someone works out why.
+!.env.development
+!.env.example
+
+.vite
+.eslintcache
+
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
