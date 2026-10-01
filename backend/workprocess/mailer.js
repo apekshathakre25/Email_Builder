@@ -1,4 +1,6 @@
-require('dotenv').config();
+// Resolved from the backend directory, not the working directory, so a worker
+// started from anywhere reads the same .env. See config/loadEnv.js.
+require('../config/loadEnv');
 
 const env = require('../config/env');
 const emailQueue = require('./queue');

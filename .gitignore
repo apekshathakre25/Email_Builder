@@ -13,9 +13,14 @@ logs/
 *.log
 npm-debug.log*
 
-# User-uploaded content and generated previews (may contain recipient data)
-uploads/*
-!uploads/.gitkeep
+# User-uploaded content and generated previews (may contain recipient data).
+#
+# Path-anchored deliberately. A pattern containing a slash is relative to the
+# directory holding the .gitignore, so the previous bare `uploads/*` stopped
+# matching the moment the backend moved into backend/ — and recipient files would
+# have started being committed.
+backend/uploads/*
+!backend/uploads/.gitkeep
 
 # OS / editor noise
 .DS_Store

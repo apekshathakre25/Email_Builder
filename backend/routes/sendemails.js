@@ -449,7 +449,7 @@ async function markCampaignTerminal(sessionId, status) {
  *
  * This used to return the entire campaign form. It no longer does: the form is
  * temporary per-tab UI state and now lives in the browser's sessionStorage
- * (public/js/form-persistence.js), which is what gives each tab an independent
+ * the frontend's per-tab form storage, which gives each tab an independent
  * draft. The server only ever held those fields to repaint the form after a
  * refresh — /send-email receives all of them in the request body — so persisting
  * them was a database write per keystroke for data nothing read back.
@@ -650,8 +650,8 @@ router.post('/recipients', upload.single('file'), async (req, res) => {
     await storeRecipients(sessionId, validRecipients);
 
     res.json({
-      // The full validRecipients array used to be echoed back here. Nothing reads
-      // it — views/file-upload.ejs only checks res.ok and then reloads /files — and
+      // The full validRecipients array is not needed by the frontend, which only
+      // needs the counts and session id — and
       // at 1M addresses it was a ~28MB response body serialised on the event loop.
       total: validRecipients.length,
       sessionId,

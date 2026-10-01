@@ -1,58 +1,20 @@
 {
   "name": "opterite",
+  "private": true,
   "version": "1.0.0",
-  "description": "Opterite — a bulk email platform with file upload, SMTP configuration, and real-time status tracking",
-  "main": "app.js",
+  "description": "Opterite — bulk email platform. Node/Express API in backend/, React SPA in frontend/.",
+  "//": "Scripts only: this package has no dependencies of its own. It exists so the repository root keeps working entry points now that the backend lives in backend/ — `npm start` and `npm test` at the root used to run the server and its suite. Each app keeps its own package.json and lockfile; npm workspaces are deliberately not used, because hoisting a shared node_modules would change module resolution for a backend that currently has none of that complexity.",
   "scripts": {
-    "start": "dotenvx run -- concurrently \"node app.js\" \"node workprocess/mailer.js\"",
-    "dev": "dotenvx run -- concurrently \"node app.js\" \"node workprocess/mailer.js\"",
-    "app": "dotenvx run -- node app.js",
-    "worker": "dotenvx run -- node workprocess/mailer.js",
-    "test": "node --test --test-force-exit --test-concurrency=1 \"tests/**/*.test.js\""
+    "start": "npm --prefix backend start",
+    "test": "npm --prefix backend test",
+    "backend": "npm --prefix backend run dev",
+    "frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install"
   },
-  "keywords": [
-    "email",
-    "bulk",
-    "smtp",
-    "nodemailer",
-    "redis",
-    "bull"
-  ],
-  "author": "",
-  "license": "ISC",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
-  "dependencies": {
-    "@dotenvx/dotenvx": "^1.48.3",
-    "body-parser": "^2.2.0",
-    "bull": "^4.16.5",
-    "compression": "^1.8.1",
-    "concurrently": "^9.2.0",
-    "cookie-parser": "^1.4.7",
-    "csv-parse": "^6.1.0",
-    "dotenv": "^17.2.4",
-    "ejs": "^3.1.10",
-    "express": "^5.1.0",
-    "express-rate-limit": "7.5.1",
-    "helmet": "8.1.0",
-    "html-to-text": "^9.0.5",
-    "imapflow": "^1.2.8",
-    "ioredis": "^5.6.1",
-    "jsonwebtoken": "^9.0.3",
-    "mailparser": "^3.9.3",
-    "mongoose": "^8.18.0",
-    "multer": "^2.0.2",
-    "nodemailer": "^7.0.5",
-    "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0",
-    "rate-limit-redis": "4.2.2",
-    "systeminformation": "^5.30.7",
-    "uuid": "^10.0.0",
-    "xlsx": "^0.18.5"
-  },
-  "devDependencies": {
-    "jsdom": "25.0.1",
-    "mongodb-memory-server": "^10.1.4"
-  }
+  "license": "ISC"
 }
