@@ -8,6 +8,7 @@ const { simpleParser } = require('mailparser');
 const {
   INBOX_PATTERNS,
   getInboxPattern,
+  isInboxPatternHeaderBlocked,
   isProtectedHeader,
   listInboxPatternMetadata
 } = require('../config/inboxPatterns');
@@ -75,6 +76,17 @@ test('protected header predicate blocks transport, authentication, and provider 
   }
   assert.equal(isProtectedHeader('Reply-To'), false);
   assert.equal(isProtectedHeader('List-Unsubscribe'), false);
+});
+
+test('selected profiles reserve their own MIME, Date, and Message-ID headers', () => {
+  for (const name of [
+    'Content-Type', 'Content-Transfer-Encoding', 'MIME-Version', 'Date', 'Message-ID',
+    'Received', 'X-SES-Outgoing'
+  ]) {
+    assert.equal(isInboxPatternHeaderBlocked(name), true, `${name} must be blocked`);
+  }
+  assert.equal(isInboxPatternHeaderBlocked('Reply-To'), false);
+  assert.equal(isInboxPatternHeaderBlocked('List-Unsubscribe'), false);
 });
 
 test('strict renderer resolves every supported placeholder and encoded variant', () => {

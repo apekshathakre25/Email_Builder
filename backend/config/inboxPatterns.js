@@ -12,6 +12,14 @@ const PROTECTED_HEADER_NAMES = new Set([
   'return-path'
 ]);
 
+const INBOX_PATTERN_OWNED_HEADER_NAMES = new Set([
+  'content-transfer-encoding',
+  'content-type',
+  'date',
+  'message-id',
+  'mime-version'
+]);
+
 const ALLOWED_MAIL_OPTION_KEYS = new Set([
   'from',
   'to',
@@ -30,6 +38,11 @@ function isProtectedHeader(name) {
   return PROTECTED_HEADER_NAMES.has(normalized) ||
     normalized.startsWith('arc-') ||
     normalized.startsWith('x-');
+}
+
+function isInboxPatternHeaderBlocked(name) {
+  const normalized = String(name || '').trim().toLowerCase();
+  return isProtectedHeader(normalized) || INBOX_PATTERN_OWNED_HEADER_NAMES.has(normalized);
 }
 
 function deepFreeze(value) {
@@ -162,6 +175,7 @@ function listInboxPatternMetadata() {
 module.exports = {
   INBOX_PATTERNS,
   getInboxPattern,
+  isInboxPatternHeaderBlocked,
   isProtectedHeader,
   listInboxPatternMetadata
 };
