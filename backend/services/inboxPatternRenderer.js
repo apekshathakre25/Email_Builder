@@ -159,16 +159,37 @@ function renderTemplate(template, values, options = {}) {
     throw new InboxPatternRenderError('Pattern random source must be a function');
   }
 
-  let rendered = template.replace(/\{\{([^{}]+)\}\}/g, (_match, name) => {
-    return resolvePlaceholder(name.trim(), values);
-  });
+  let rendered = '';
 
-  rendered = rendered.replace(/\[\[([^\[\]]+)\]\]/g, (_match, expression) => {
-    return resolveExpression(expression, context);
-  });
+  for (let index = 0; index < template.length;) {
+    const opener = template.slice(index, index + 2);
 
-  if (/\{\{|\}\}|\[\[|\]\]/.test(rendered)) {
-    throw new InboxPatternRenderError('Malformed or unresolved pattern syntax remains after rendering');
+    if (opener === '}}' || opener === ']]') {
+      throw new InboxPatternRenderError('Malformed or unresolved pattern syntax remains after rendering');
+    }
+
+    if (opener !== '{{' && opener !== '[[') {
+      rendered += template[index];
+      index += 1;
+      continue;
+    }
+
+    const closer = opener === '{{' ? '}}' : ']]';
+    const end = template.indexOf(closer, index + 2);
+    if (end < 0) {
+      throw new InboxPatternRenderError('Malformed or unresolved pattern syntax remains after rendering');
+    }
+
+    const token = template.slice(index + 2, end);
+    const invalidTokenCharacter = opener === '{{' ? /[{}]/ : /[\[\]]/;
+    if (!token || invalidTokenCharacter.test(token)) {
+      throw new InboxPatternRenderError('Malformed or unresolved pattern syntax remains after rendering');
+    }
+
+    rendered += opener === '{{'
+      ? resolvePlaceholder(token.trim(), values)
+      : resolveExpression(token, context);
+    index = end + 2;
   }
 
   return rendered;
@@ -184,7 +205,25 @@ function renderNode(value, values, options) {
   );
 }
 
+function assertSingleLineHeader(name, value) {
+  if (typeof value === 'string' && /[\r\n]/.test(value)) {
+    throw new InboxPatternRenderError(`Rendered ${name} must not contain line breaks`);
+  }
+}
+
 function validateRenderedOptions(mailOptions) {
+  for (const [name, value] of [
+    ['From name', mailOptions.from?.name],
+    ['From address', mailOptions.from?.address],
+    ['To name', mailOptions.to?.name],
+    ['To address', mailOptions.to?.address],
+    ['Subject', mailOptions.subject],
+    ['Date', mailOptions.date],
+    ['Message-ID', mailOptions.messageId]
+  ]) {
+    assertSingleLineHeader(name, value);
+  }
+
   if (!MESSAGE_ID_PATTERN.test(mailOptions.messageId || '')) {
     throw new InboxPatternRenderError('Rendered Message-ID is invalid');
   }

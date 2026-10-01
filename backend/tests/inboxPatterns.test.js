@@ -105,6 +105,40 @@ test('strict renderer resolves every supported placeholder and encoded variant',
   assert.doesNotMatch(rendered, /\{\{|\[\[/);
 });
 
+test('injected campaign content remains opaque to pattern syntax parsing', () => {
+  const injected = {
+    ...VALUES,
+    SubjectLine: 'Literal [[num(3)]] and {{Unknown}} subject',
+    PlainContent: 'Plain [[smallchar(4)]] and {{Missing}} content',
+    HtmlContent: '<p>HTML [[time()]] and {{FromEmail}}</p>'
+  };
+
+  assert.equal(
+    renderTemplate(
+      '{{SubjectLine}}|{{PlainContent}}|{{HtmlContent}}',
+      injected,
+      deterministicOptions()
+    ),
+    `${injected.SubjectLine}|${injected.PlainContent}|${injected.HtmlContent}`
+  );
+
+  const rendered = renderInboxPattern('pattern-1', injected, deterministicOptions());
+  assert.equal(rendered.subject, injected.SubjectLine);
+  assert.equal(rendered.text.content, injected.PlainContent);
+  assert.equal(rendered.html.content, injected.HtmlContent);
+});
+
+test('opaque injection still rejects line breaks in rendered header values', () => {
+  assert.throws(
+    () => renderInboxPattern(
+      'pattern-1',
+      { ...VALUES, SubjectLine: 'Subject\r\nBcc: injected@example.com' },
+      deterministicOptions()
+    ),
+    /Subject must not contain line breaks/
+  );
+});
+
 test('strict renderer supports every documented generated expression deterministically', () => {
   const rendered = renderTemplate(
     [
