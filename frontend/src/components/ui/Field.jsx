@@ -251,7 +251,7 @@ export function CheckboxField({ id, label, checked, onChange, disabled, hint, ic
 }
 
 /** Grouped set of related fields — the old <fieldset class="field-group">. */
-export function FieldGroup({ title, icon, className, children, actions }) {
+export function FieldGroup({ title, icon, className, children, actions, legendAction }) {
   return (
     <fieldset
       className={cn(
@@ -259,9 +259,15 @@ export function FieldGroup({ title, icon, className, children, actions }) {
         className
       )}
     >
-      <legend className="flex items-center gap-2 px-1 text-md font-semibold text-ink-800">
+      <legend
+        className={cn(
+          'flex items-center gap-2 px-1 text-md font-semibold text-ink-800',
+          legendAction && 'w-full'
+        )}
+      >
         {icon ? <i className={cn('fa-solid', icon, 'text-brand-500')} aria-hidden="true" /> : null}
         {title}
+        {legendAction ? <span className="ml-auto">{legendAction}</span> : null}
       </legend>
       {actions}
       {children}

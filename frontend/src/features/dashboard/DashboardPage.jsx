@@ -52,6 +52,7 @@ export function DashboardPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [showMessageIdHelp, setShowMessageIdHelp] = useState(false);
   const [showHowToUse, setShowHowToUse] = useState(false);
+  const [showTestResults, setShowTestResults] = useState(false);
 
   /** Which campaign the operator dismissed the interval panel for. */
   const [intervalPanelDismissedFor, setIntervalPanelDismissedFor] = useState(null);
@@ -360,7 +361,13 @@ export function DashboardPage() {
     <div className="flex flex-col gap-4">
       <SystemHealthStrip />
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,var(--sidebar-w))]">
+      <div
+        className={`grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] ${
+          showTestResults
+            ? '2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,var(--sidebar-w))]'
+            : '2xl:grid-cols-[minmax(0,calc((100%_-_var(--sidebar-w)_-_2rem)/2))_minmax(0,1fr)]'
+        }`}
+      >
         <div className="flex min-w-0 flex-col gap-4">
           <SmtpCredentialsCard
             form={form.form}
@@ -408,7 +415,6 @@ export function DashboardPage() {
             onRetryInboxPatterns={() => form.refetchInboxPatterns()}
             autoImapAvailable={autoImapAvailable}
             autoImapChecked={autoImapEffective}
-            autoImapBlockedReason={autoImapBlockedReason}
             onPreview={() => setShowPreview(true)}
             onMessageIdHelp={() => setShowMessageIdHelp(true)}
             onHowToUse={() => setShowHowToUse(true)}
@@ -417,6 +423,7 @@ export function DashboardPage() {
             isSubmitting={send.isSubmitting}
             isStopping={send.isStopping}
             canStop={canStop}
+            onOpenTestResults={() => setShowTestResults(true)}
             laneBanner={
               lane.isWaiting ? (
                 <p
@@ -440,9 +447,15 @@ export function DashboardPage() {
           />
         </div>
 
-        <div className="flex min-w-0 flex-col gap-4 xl:col-span-2 2xl:col-span-1">
-          <TestResultsPanel imap={imap} isAutoMode={autoImapEffective} />
-        </div>
+        {showTestResults ? (
+          <div className="flex min-w-0 flex-col gap-4 xl:col-span-2 2xl:col-span-1">
+            <TestResultsPanel
+              imap={imap}
+              isAutoMode={autoImapEffective}
+              onClose={() => setShowTestResults(false)}
+            />
+          </div>
+        ) : null}
       </div>
 
       {showIntervalPanel ? (

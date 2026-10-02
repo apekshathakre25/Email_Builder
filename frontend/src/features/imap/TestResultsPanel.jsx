@@ -29,7 +29,7 @@ import { TestResultDetailsModal } from './TestResultDetailsModal';
  * Reads from the shared useImapTesting hook so the dashboard's Auto IMAP Test, the
  * manual check button and this table all operate on one selection and one result set.
  */
-export function TestResultsPanel({ imap, isAutoMode }) {
+export function TestResultsPanel({ imap, isAutoMode, onClose }) {
   const confirm = useConfirm();
   const [detailsFor, setDetailsFor] = useState(null);
 
@@ -70,6 +70,16 @@ export function TestResultsPanel({ imap, isAutoMode }) {
           <Badge tone={isAutoMode ? 'auto' : 'neutral'} showIcon={false}>
             {isAutoMode ? 'Auto testing' : 'Manual testing'}
           </Badge>
+          {onClose ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              icon="fa-xmark"
+              onClick={onClose}
+              title="Close Test Results"
+              aria-label="Close Test Results"
+            />
+          ) : null}
         </PanelHeader>
 
         <PanelBody>

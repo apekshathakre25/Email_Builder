@@ -2,17 +2,17 @@ import { Link } from 'react-router-dom';
 
 import { ROUTES } from '../../../lib/config';
 import {
-  Choice,
-  ChoiceSet,
   CheckboxField,
   Field,
   FieldGroup,
   FieldRow,
+  Select,
   TextField,
   Textarea
 } from '../../../components/ui/Field';
 import { Button, ButtonRow } from '../../../components/ui/Button';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { CONTENT_TRANSFER_ENCODING_OPTIONS } from '../contentTransferEncoding';
 
 /**
  * Message content, sender identity, recipients and rate.
@@ -34,7 +34,6 @@ export function EmailConfigCard({
   onRetryInboxPatterns,
   autoImapAvailable,
   autoImapChecked,
-  autoImapBlockedReason,
   onPreview,
   onMessageIdHelp,
   onHowToUse,
@@ -43,12 +42,26 @@ export function EmailConfigCard({
   isSubmitting,
   isStopping,
   canStop,
-  laneBanner
+  laneBanner,
+  onOpenTestResults
 }) {
   const fieldError = (field) => (validationError?.field === field ? validationError.error : undefined);
 
   return (
-    <FieldGroup title="Email Configuration" icon="fa-envelope">
+    <FieldGroup
+      title="Email Configuration"
+      icon="fa-envelope"
+      legendAction={
+        <Button
+          variant="ghost"
+          size="icon"
+          icon="fa-chart-bar"
+          onClick={onOpenTestResults}
+          title="Open Test Results"
+          aria-label="Open Test Results"
+        />
+      }
+    >
       <div className="flex flex-col gap-1.5">
         <label htmlFor="custom-headers" className="text-sm font-semibold text-ink-700">
           Custom Headers (optional)
@@ -81,7 +94,7 @@ export function EmailConfigCard({
           onChange={(value) => setField('inboxPatternId', value)}
           disabled={isLoadingInboxPatterns || Boolean(inboxPatternsError)}
           placeholder={isLoadingInboxPatterns ? 'Loading patterns…' : 'Search Inbox Patterns'}
-          aria-describedby="inbox-pattern-status"
+          aria-describedby={isLoadingInboxPatterns || inboxPatternsError ? 'inbox-pattern-status' : undefined}
         />
         {isLoadingInboxPatterns ? (
           <span id="inbox-pattern-status" className="flex items-center gap-1.5 text-xs text-muted" role="status">
@@ -95,42 +108,39 @@ export function EmailConfigCard({
               Retry
             </Button>
           </span>
-        ) : (
-          <span id="inbox-pattern-status" className="text-xs text-muted">
-            Default keeps the existing email generation behavior.
-          </span>
-        )}
+        ) : null}
       </Field>
 
-      <FieldRow min="220px">
+      <TextField
+        id="smtp-from-email"
+        label="From Email"
+        placeholder="sender@yourdomain.com"
+        autoComplete="off"
+        value={form.fromEmail}
+        onChange={(event) => setField('fromEmail', event.target.value)}
+      />
+
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <TextField
-          id="smtp-from-email"
-          label="From Email"
-          placeholder="sender@yourdomain.com"
+          id="subject"
+          label="Subject"
+          className="min-w-0"
+          placeholder="Enter Subject"
           autoComplete="off"
-          value={form.fromEmail}
-          onChange={(event) => setField('fromEmail', event.target.value)}
-          hint="Also supplies {{Domain}} in the Message-ID."
+          value={form.subject}
+          onChange={(event) => setField('subject', event.target.value)}
         />
 
         <TextField
           id="smtp-from-name"
           label="From Name"
+          className="min-w-0"
           placeholder="Enter From Name"
           autoComplete="off"
           value={form.fromName}
           onChange={(event) => setField('fromName', event.target.value)}
         />
-      </FieldRow>
-
-      <TextField
-        id="subject"
-        label="Subject"
-        placeholder="Enter Subject"
-        autoComplete="off"
-        value={form.subject}
-        onChange={(event) => setField('subject', event.target.value)}
-      />
+      </div>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="test-recp" className="text-sm font-semibold text-ink-700">
@@ -152,62 +162,61 @@ export function EmailConfigCard({
           <span className="text-xs text-danger-600" role="alert">
             {fieldError('testRecipients')}
           </span>
-        ) : (
-          <span className="text-xs text-muted">Separate addresses with commas, semicolons or new lines.</span>
-        )}
+        ) : null}
       </div>
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <ChoiceSet legend="Bulk or test">
-          <Choice
-            id="mode-bulk"
-            name="test-bulk"
-            value="Bulk"
-            checked={form.testBulk === 'Bulk'}
-            onChange={() => setField('testBulk', 'Bulk')}
-            label="Bulk"
-          />
-          <Choice
-            id="mode-test"
-            name="test-bulk"
-            value="Test"
-            checked={form.testBulk === 'Test'}
-            onChange={() => setField('testBulk', 'Test')}
-            label="Test"
-          />
-        </ChoiceSet>
+      <div className="flex min-w-0 flex-wrap items-end gap-3">
+        <Field className="w-full min-w-0 sm:w-[170px]" label="Bulk or Test" htmlFor="test-bulk">
+          <Select
+            id="test-bulk"
+            className="min-w-0"
+            value={form.testBulk}
+            onChange={(event) => setField('testBulk', event.target.value)}
+          >
+            <option value="Bulk">Bulk</option>
+            <option value="Test">Test</option>
+          </Select>
+        </Field>
 
-        <CheckboxField
-          id="auto-imap-test"
-          label="Auto IMAP Test"
-          icon="fa-robot"
-          // The effective value, not the raw field: the box must never show armed while the
-          // gate below has made it inert.
-          checked={autoImapChecked}
-          onChange={(event) => setField('autoImapTest', event.target.checked)}
-          disabled={!autoImapAvailable}
-          hint={autoImapBlockedReason}
-        />
+        <Field className="w-full min-w-0 sm:w-[170px]" label="Message Type" htmlFor="message-type">
+          <Select
+            id="message-type"
+            className="min-w-0"
+            value={form.messageType}
+            onChange={(event) => setField('messageType', event.target.value)}
+          >
+            <option value="">Select message type</option>
+            <option value="Plain">Plain</option>
+            <option value="HTML">HTML</option>
+          </Select>
+        </Field>
+
+        <Field className="w-full min-w-0 sm:w-[220px]" label="Content Transfer Encoding" htmlFor="content-transfer-encoding">
+          <Select
+            id="content-transfer-encoding"
+            className="min-w-0"
+            value={form.contentTransferEncoding}
+            onChange={(event) => setField('contentTransferEncoding', event.target.value)}
+          >
+            {CONTENT_TRANSFER_ENCODING_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="flex w-full items-center sm:mb-2.5 sm:w-auto">
+          <CheckboxField
+            id="auto-imap-test"
+            label="Auto IMAP Test"
+            // The effective value, not the raw field: the box must never show armed while the
+            // gate below has made it inert.
+            checked={autoImapChecked}
+            onChange={(event) => setField('autoImapTest', event.target.checked)}
+            disabled={!autoImapAvailable}
+          />
+        </div>
       </div>
-
-      <ChoiceSet legend="Message Type">
-        <Choice
-          id="type-plain"
-          name="plain-html"
-          value="Plain"
-          checked={form.messageType === 'Plain'}
-          onChange={() => setField('messageType', 'Plain')}
-          label="Plain"
-        />
-        <Choice
-          id="type-html"
-          name="plain-html"
-          value="HTML"
-          checked={form.messageType === 'HTML'}
-          onChange={() => setField('messageType', 'HTML')}
-          label="HTML"
-        />
-      </ChoiceSet>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="message" className="text-sm font-semibold text-ink-700">
@@ -218,47 +227,62 @@ export function EmailConfigCard({
           placeholder="Enter the message body"
           value={form.message}
           onChange={(event) => setField('message', event.target.value)}
-          rows={8}
+          rows={4}
           className={form.messageType === 'HTML' ? 'font-mono text-sm' : undefined}
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="file-ids" className="text-sm font-semibold text-ink-700">
-          File IDs {isTestMode ? '' : '(required for Bulk)'}
-        </label>
-        <TextField
-          id="file-ids"
-          placeholder="e.g. 4f3c2a1b-…, 9d8e7f6a-…"
-          autoComplete="off"
-          value={form.fileIds}
-          onChange={(event) => setField('fileIds', event.target.value)}
-          error={fieldError('fileIds')}
-          hint={
-            <>
-              Comma-separated. The first id identifies the campaign.{' '}
-              <Link to={ROUTES.fileManager} className="font-semibold">
-                Manage recipient files
-              </Link>
-            </>
-          }
-        />
-      </div>
+      <FieldRow min="220px">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex min-h-10 min-w-0 items-center gap-1.5">
+            <label htmlFor="file-ids" className="min-w-0 text-sm font-semibold text-ink-700">
+              File IDs {isTestMode ? '' : '(required for Bulk)'}
+            </label>
+            <Link
+              to={ROUTES.fileManager}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-brand-600 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-brand-200"
+              title="Manage recipient files"
+              aria-label="Manage recipient files"
+            >
+              <i className="fa-solid fa-folder" aria-hidden="true" />
+            </Link>
+          </div>
+          <TextField
+            id="file-ids"
+            className="min-w-0"
+            placeholder="e.g. 4f3c2a1b-…, 9d8e7f6a-…"
+            autoComplete="off"
+            value={form.fileIds}
+            onChange={(event) => setField('fileIds', event.target.value)}
+            error={fieldError('fileIds')}
+          />
+        </div>
 
-      <TextField
-        id="custom-message-id"
-        label="Custom Message-ID (optional)"
-        placeholder="<[[timestamp]]-[[bigchar(6)]]-[[num(6)]]@{{Domain}}>"
-        autoComplete="off"
-        value={form.customMessageId}
-        onChange={(event) => setField('customMessageId', event.target.value)}
-        className="[&_input]:font-mono [&_input]:text-sm"
-        labelAction={
-          <Button variant="ghost" size="sm" icon="fa-circle-info" onClick={onMessageIdHelp}>
-            Placeholders
-          </Button>
-        }
-      />
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex min-h-10 min-w-0 items-center gap-1.5">
+            <label htmlFor="custom-message-id" className="min-w-0 text-sm font-semibold text-ink-700">
+              Custom Message-ID (optional)
+            </label>
+            <Button
+              variant="ghost"
+              size="icon"
+              icon="fa-circle-info"
+              onClick={onMessageIdHelp}
+              title="Placeholders"
+              aria-label="Placeholders"
+              className="shrink-0"
+            />
+          </div>
+          <TextField
+            id="custom-message-id"
+            className="min-w-0 [&_input]:font-mono [&_input]:text-sm"
+            placeholder="<[[timestamp]]-[[bigchar(6)]]-[[num(6)]]@{{Domain}}>"
+            autoComplete="off"
+            value={form.customMessageId}
+            onChange={(event) => setField('customMessageId', event.target.value)}
+          />
+        </div>
+      </FieldRow>
 
       <FieldRow min="150px">
         <TextField
@@ -273,7 +297,6 @@ export function EmailConfigCard({
           value={form.limit}
           onChange={(event) => setField('limit', event.target.value)}
           error={fieldError('limit')}
-          hint="Emails per interval, or batch size when no interval is set."
           // readOnly, emphatically not disabled. The old form built its payload from a
           // FormData snapshot, where a disabled input is omitted entirely — so locking
           // these with `disabled` posted an empty `interval-seconds`, and an absent
@@ -303,7 +326,6 @@ export function EmailConfigCard({
           value={form.limitToSend}
           onChange={(event) => setField('limitToSend', event.target.value)}
           error={fieldError('limitToSend')}
-          hint="Cap for this Send Email action. Empty means no cap."
         />
 
         <TextField
@@ -317,7 +339,6 @@ export function EmailConfigCard({
           placeholder="e.g. 5"
           value={form.intervalSeconds}
           onChange={(event) => setField('intervalSeconds', event.target.value)}
-          hint="Time window for the limit. Empty means unpaced."
           readOnly={rateInputsLocked}
           aria-readonly={rateInputsLocked}
           title={

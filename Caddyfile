@@ -9,19 +9,13 @@
 # are comma-separated and both get certificates:
 #   production → opterite.com, www.opterite.com   (HTTP auto-redirects to HTTPS)
 #   local test → :80                              (plain HTTP, no ACME)
-
 {
 	email {$ACME_EMAIL}
 }
 
-{$SITE_ADDRESS} {
-	# Uploads are capped at MAX_UPLOAD_MB (25) per file inside the app. Keeping
-	# the proxy ceiling above that lets the app's own 413 handler answer with a
-	# useful message instead of Caddy cutting the connection first.
-	request_body {
-		max_size 30MB
-	}
-
+# Shared with both API matchers below so the load-balancing config for the
+# Node backend only needs to be written once.
+(backend_proxy) {
 	reverse_proxy {
 		# `dynamic a` re-resolves the `web` service name on the compose network,
 		# so `--scale web=N` is load balanced with no config change. A static
@@ -45,8 +39,57 @@
 		lb_retries 2
 		lb_try_duration 5s
 	}
+}
 
-	# Response compression is already handled by compression() in app.js.
+{$SITE_ADDRESS} {
+	# Built frontend bundle (`npm run build` -> frontend/dist), mounted into the
+	# Caddy container. Caddy serves it directly instead of a separate Nginx box.
+	root * /srv/frontend
+
+	# Uploads are capped at MAX_UPLOAD_MB (25) per file inside the app. Keeping
+	# the proxy ceiling above that lets the app's own 413 handler answer with a
+	# useful message instead of Caddy cutting the connection first.
+	request_body {
+		max_size 30MB
+	}
+
+	# POST /login is the real authentication call and must reach the Node API.
+	# GET /login is the SPA's login *page* — a client-side route with no
+	# backend handler — so it falls through to the static handler below like
+	# any other frontend route.
+	@loginSubmit {
+		method POST
+		path /login
+	}
+	handle @loginSubmit {
+		import backend_proxy
+	}
+
+	# Everything else the API actually serves. Routes are mounted at the path
+	# root rather than behind one shared /api prefix (see backend/app.js), so
+	# each has to be listed explicitly to avoid swallowing the SPA's own routes.
+	@api {
+		path /healthz /send-otp /logout /check-auth /auth/google /auth/google/callback \
+ /api/app-config /api/patterns /api/system-health \
+ /imap/* /campaign-lane /campaign-lane/* \
+ /email-config /recipients /stop-sending /send-email /status /log-download \
+ /logs /logs/* /logs-stats /files /files/* /files-stats
+	}
+	handle @api {
+		import backend_proxy
+	}
+
+	# Static/frontend routes: serve the built SPA, falling back to index.html so
+	# client-side routes (including GET /login) survive a hard refresh.
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Response compression is already handled by compression() in app.js for
+	# proxied API responses; file_server here serves the SPA's pre-built assets.
+	encode gzip
+
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 20MB
