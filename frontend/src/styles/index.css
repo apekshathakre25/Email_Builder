@@ -218,6 +218,11 @@
     border-radius: var(--radius-sm);
   }
 
+  select option:checked {
+    color: var(--color-inverse);
+    background-color: var(--color-brand-500);
+  }
+
   /* Number inputs: the spinners are noise on fields like Limit and Interval,
      where values are typed rather than nudged. */
   input[type='number']::-webkit-outer-spin-button,

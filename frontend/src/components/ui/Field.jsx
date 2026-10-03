@@ -128,7 +128,16 @@ export const Textarea = forwardRef(function Textarea({ className, rows = 3, ...r
 
 export const Select = forwardRef(function Select({ className, children, ...rest }, ref) {
   return (
-    <select ref={ref} className={cn(CONTROL_BASE, 'cursor-pointer pr-8', className)} {...rest}>
+    <select
+      ref={ref}
+      className={cn(
+        CONTROL_BASE,
+        'cursor-pointer pr-8 enabled:border-2 enabled:border-brand-500 enabled:bg-brand-50 enabled:text-body enabled:font-medium enabled:hover:border-brand-600',
+        'disabled:cursor-not-allowed disabled:border disabled:border-line disabled:bg-surface-muted disabled:text-muted disabled:font-normal',
+        className
+      )}
+      {...rest}
+    >
       {children}
     </select>
   );
